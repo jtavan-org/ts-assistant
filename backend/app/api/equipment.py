@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, HTTPException
 
 from ..equipment import (
@@ -26,6 +28,10 @@ def get_equipment() -> list[EquipmentWithFov]:
 
 @router.post("/equipment", response_model=EquipmentWithFov)
 def create_equipment(profile: EquipmentInput) -> EquipmentWithFov:
+    # Always mint a fresh id on create. The client may send an empty id (which
+    # pydantic keeps as "" rather than triggering the default_factory); using it
+    # would store an id-less profile that later PUTs to /equipment/ can't match.
+    profile.id = uuid.uuid4().hex[:8]
     return upsert(profile)
 
 

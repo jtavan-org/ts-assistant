@@ -44,6 +44,7 @@ export default function EquipmentPanel({ onFovChange }: Props) {
   const [selectedId, setSelectedId] = useState<string>("");
   const [working, setWorking] = useState<EquipmentInput | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   function emitFov(w: EquipmentInput | null) {
     if (!w) return onFovChange(null);
@@ -86,24 +87,39 @@ export default function EquipmentPanel({ onFovChange }: Props) {
 
   async function save() {
     if (!working) return;
-    const saved = await updateEquipment(working);
-    setProfiles((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
-    setDirty(false);
+    try {
+      const saved = await updateEquipment(working);
+      setProfiles((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+      setDirty(false);
+      setErr(null);
+    } catch (e) {
+      setErr(`Save failed: ${e}`);
+    }
   }
 
   async function add() {
-    const created = await createEquipment({ id: "", ...BLANK });
-    const list = [...profiles, created];
-    setProfiles(list);
-    select(list, created.id);
+    try {
+      const created = await createEquipment({ id: "", ...BLANK });
+      const list = [...profiles, created];
+      setProfiles(list);
+      select(list, created.id);
+      setErr(null);
+    } catch (e) {
+      setErr(`Create failed: ${e}`);
+    }
   }
 
   async function remove() {
     if (!selectedId) return;
-    await deleteEquipment(selectedId);
-    const list = profiles.filter((p) => p.id !== selectedId);
-    setProfiles(list);
-    select(list, list[0]?.id ?? "");
+    try {
+      await deleteEquipment(selectedId);
+      const list = profiles.filter((p) => p.id !== selectedId);
+      setProfiles(list);
+      select(list, list[0]?.id ?? "");
+      setErr(null);
+    } catch (e) {
+      setErr(`Delete failed: ${e}`);
+    }
   }
 
   const fov = working
@@ -182,6 +198,7 @@ export default function EquipmentPanel({ onFovChange }: Props) {
             <button className="eq-save" onClick={save} disabled={!dirty}>
               {dirty ? "Save" : "Saved"}
             </button>
+            {err && <div className="eq-error">{err}</div>}
           </>
         )}
       </div>
