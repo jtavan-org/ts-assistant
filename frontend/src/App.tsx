@@ -23,6 +23,15 @@ import ProjectBuilder, {
 import { mosaicPanels, fovTopTriangle } from "./sky/fov";
 import "./App.css";
 
+// Unique local id for a draft target. Avoids crypto.randomUUID(), which is
+// undefined in a non-secure context (the app is served over http on a LAN IP,
+// not https/localhost). A monotonic counter keeps it collision-free per session.
+let targetSeq = 0;
+function newTargetId(): string {
+  targetSeq += 1;
+  return `t${Date.now().toString(36)}-${targetSeq}`;
+}
+
 export default function App() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [surveyId, setSurveyId] = useState<string>("");
@@ -97,7 +106,7 @@ export default function App() {
   function makeTargetDraft(name: string): TargetDraft {
     const c = aladinRef.current?.getCenter() ?? [0, 0];
     return {
-      id: crypto.randomUUID(),
+      id: newTargetId(),
       name,
       centerRa: c[0],
       centerDec: c[1],
