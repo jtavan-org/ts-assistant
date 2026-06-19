@@ -1,4 +1,4 @@
-import type { FovBox } from "../sky/AladinView";
+import type { FovBox, PlaceMode } from "../sky/AladinView";
 
 /** One target being framed: a single pointing (1×1) or a mosaic (N×M panes). */
 export interface TargetDraft {
@@ -23,7 +23,7 @@ interface Props {
   /** Current rig FOV = the size of one pane; null until a rig is selected. */
   fov: FovBox | null;
   draft: ProjectDraft | null;
-  placing: boolean;
+  placeMode: PlaceMode;
   onNewProject: () => void;
   onDiscard: () => void;
   onRenameProject: (name: string) => void;
@@ -31,7 +31,7 @@ interface Props {
   onSelectTarget: (id: string) => void;
   onRemoveTarget: (id: string) => void;
   onPatchTarget: (patch: Partial<TargetDraft>) => void;
-  onTogglePlacing: () => void;
+  onSetMode: (mode: PlaceMode) => void;
   onCenterCurrent: () => void;
 }
 
@@ -46,7 +46,7 @@ function raToHms(raDeg: number): string {
 export default function ProjectBuilder({
   fov,
   draft,
-  placing,
+  placeMode,
   onNewProject,
   onDiscard,
   onRenameProject,
@@ -54,7 +54,7 @@ export default function ProjectBuilder({
   onSelectTarget,
   onRemoveTarget,
   onPatchTarget,
-  onTogglePlacing,
+  onSetMode,
   onCenterCurrent,
 }: Props) {
   const hasFov = !!fov && fov.widthDeg > 0 && fov.heightDeg > 0;
@@ -152,12 +152,25 @@ export default function ProjectBuilder({
 
                 <div className="eq-row">
                   <button
-                    className={placing ? "mo-place active" : "mo-place"}
-                    onClick={onTogglePlacing}
-                    title="Click/drag on the sky to position this target"
+                    className={placeMode === "move" ? "mo-place active" : "mo-place"}
+                    onClick={() => onSetMode(placeMode === "move" ? null : "move")}
+                    title="Click or drag on the sky to position this target"
                   >
-                    {placing ? "Placing… (click sky)" : "Place / move on sky"}
+                    {placeMode === "move" ? "Placing…" : "Place / move"}
                   </button>
+                  <button
+                    className={
+                      placeMode === "coverage" ? "mo-place active" : "mo-place"
+                    }
+                    onClick={() =>
+                      onSetMode(placeMode === "coverage" ? null : "coverage")
+                    }
+                    title="Drag a box over the area you want imaged; panes auto-fill to cover it"
+                  >
+                    {placeMode === "coverage" ? "Drag area…" : "Cover area"}
+                  </button>
+                </div>
+                <div className="eq-row">
                   <button onClick={onCenterCurrent} title="Center on current view">
                     Center here
                   </button>

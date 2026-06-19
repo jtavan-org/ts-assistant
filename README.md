@@ -27,8 +27,10 @@ the original database.
 - **Define equipment / field of view.** Create rig profiles (pixel size, sensor
   dimensions, focal length, corrector/reducer factor); the app computes plate
   scale and FOV and overlays the FOV box on the sky.
-- **Draft mosaics.** Build a project draft with one or more targets, lay out an
-  N×M panel grid with adjustable overlap and rotation, place/move each target on
+- **Draft projects, single targets, and mosaics.** A **project** is the top-tier
+  artifact and holds one or more **targets**. Each target has a **panes (N×M)**
+  count: 1×1 is an individual pointing, anything larger is a mosaic. Per target
+  you set panes, overlap (only when it's a mosaic), and rotation, position it on
   the sky, and read off the total coverage area. The panel grid is drawn live on
   the sky dome.
 
@@ -111,11 +113,13 @@ backend lives elsewhere.
 - **Equipment** panel (sidebar): pick or create a rig. Edits show a live plate
   scale + FOV readout and update the on-sky FOV box. Profiles persist via the
   backend (`data/equipment.json`).
-- **Project** panel (sidebar): start a new project draft, add targets, and for
-  each target set columns/rows (mosaic grid), overlap %, and rotation. Use
-  **Place / move on sky** then click the sky to position a target, or **Center
-  here** to snap it to the current view center. The coverage readout shows the
-  overall framed area. *Saving a draft back to the database is not yet wired up.*
+- **Project** panel (sidebar): start a new project draft (it begins with a single
+  1×1 target at the view center), add more targets, and for each target set
+  columns/rows (panes), overlap % (mosaics only), and rotation. Position a target
+  by using Aladin's built-in search bar to resolve an object by name, by
+  **Place / move on sky** then clicking/dragging on the sky, or **Center here** to
+  snap it to the current view center. The coverage readout shows the overall
+  framed area. *Saving a draft back to the database is not yet wired up.*
 - **Projects** panel (sidebar): the read-only list of existing projects/targets
   from the database; click a target to center on it.
 
@@ -180,8 +184,10 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
 - **No exposure-plan / template / rule-weight editing.** Exposure plans are shown
   read-only (nested under targets); there is no UI to create or edit exposure
   templates, assign plans, or tune rule weights yet.
-- **No target search / resolver.** You position targets by clicking the sky or
-  centering the view; there's no name-resolver search box yet.
+- **Target search is Aladin's, not a custom UI.** You resolve objects by name via
+  Aladin Lite's built-in search bar (plus click/center to position); there's no
+  TS-Assistant-specific search/resolver box integrated into the project builder
+  yet.
 - **NSNS survey coverage.** All NSNS narrowband layers only cover Dec ≳ −20°;
   outside that band they render empty. Use DSS2/Mellinger for the southern sky.
 - **Equipment store is app-local and single-user.** Profiles live in

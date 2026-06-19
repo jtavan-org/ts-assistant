@@ -38,6 +38,17 @@ export interface AladinHandle {
   getFov: () => number | null;
 }
 
+/** The four sky corners of a dragged Area-of-Interest rectangle ([ra,dec] each). */
+export interface CoverageCorners {
+  tl: [number, number];
+  tr: [number, number];
+  bl: [number, number];
+  br: [number, number];
+}
+
+/** Sky-interaction mode for the capture layer: move a center, drag an area, or off. */
+export type PlaceMode = "move" | "coverage" | null;
+
 interface Props {
   survey?: Survey;
   targets: Target[];
@@ -45,9 +56,10 @@ interface Props {
   fov: FovBox | null;
   /** One render entry per project-draft target (amber overlay). */
   draft: TargetRender[] | null;
-  /** When true, a capture layer turns sky clicks/drags into onPlaceCenter calls. */
-  placing?: boolean;
+  /** Non-null shows a capture layer: 'move' = click/drag a center, 'coverage' = drag an area. */
+  placeMode?: PlaceMode;
   onPlaceCenter?: (raDeg: number, decDeg: number) => void;
+  onCoverageDrag?: (corners: CoverageCorners) => void;
   onTargetClick?: (id: number) => void;
 }
 
@@ -67,8 +79,9 @@ function AladinView(
     focus,
     fov,
     draft,
-    placing,
+    placeMode,
     onPlaceCenter,
+    onCoverageDrag,
     onTargetClick,
   }: Props,
   ref: React.Ref<AladinHandle>,
@@ -78,7 +91,9 @@ function AladinView(
   const catalogRef = useRef<any>(null);
   const fovOverlayRef = useRef<any>(null);
   const draftOverlayRef = useRef<any>(null);
+  const coverageOverlayRef = useRef<any>(null);
   const draggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Latest props, readable from inside the async init closure.
   const onClickRef = useRef(onTargetClick);
@@ -93,6 +108,10 @@ function AladinView(
   draftRef.current = draft;
   const onPlaceRef = useRef(onPlaceCenter);
   onPlaceRef.current = onPlaceCenter;
+  const onCoverageRef = useRef(onCoverageDrag);
+  onCoverageRef.current = onCoverageDrag;
+  const placeModeRef = useRef(placeMode);
+  placeModeRef.current = placeMode;
 
   useImperativeHandle(ref, () => ({
     getCenter: () => {
@@ -153,6 +172,16 @@ function AladinView(
       });
       aladin.addOverlay(draftOverlay);
       draftOverlayRef.current = draftOverlay;
+
+      // Coverage Area-of-Interest preview (the raw dragged rectangle), drawn
+      // white/dashed during a coverage drag so it reads apart from the amber grid.
+      const coverageOverlay = A.graphicOverlay({
+        color: "#ffffff",
+        lineWidth: 1,
+        lineDash: [5, 4],
+      });
+      aladin.addOverlay(coverageOverlay);
+      coverageOverlayRef.current = coverageOverlay;
 
       // Aladin fires objectClicked(source) on a marker and objectClicked(null)
       // on empty sky. Recenter on a marker; close the popup on empty sky (so the
@@ -274,32 +303,82 @@ function AladinView(
     aladinRef.current?.view?.requestRedraw?.();
   }
 
-  // Translate a pointer event over the sky to RA/Dec and report it as the new
-  // mosaic center (drop-on-click and drag-to-move both flow through here).
-  function placeFromEvent(e: React.PointerEvent) {
-    const al = aladinRef.current;
+  // Host-relative pixel of a pointer event, or null if the host is gone.
+  function hostXY(e: React.PointerEvent): { x: number; y: number } | null {
     const host = divRef.current;
-    if (!al || !host) return;
+    if (!host) return null;
     const rect = host.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const world = al.pix2world?.(x, y);
-    if (world && Number.isFinite(world[0]) && Number.isFinite(world[1])) {
-      onPlaceRef.current?.(world[0], world[1]);
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function unproject(x: number, y: number): [number, number] | null {
+    const w = aladinRef.current?.pix2world?.(x, y);
+    return w && Number.isFinite(w[0]) && Number.isFinite(w[1])
+      ? [w[0], w[1]]
+      : null;
+  }
+
+  // 'move' mode: report the pointer's sky position as the new target center.
+  function placeFromEvent(e: React.PointerEvent) {
+    const p = hostXY(e);
+    if (!p) return;
+    const world = unproject(p.x, p.y);
+    if (world) onPlaceRef.current?.(world[0], world[1]);
+  }
+
+  // 'coverage' mode: map the screen bounding box of the drag to four sky corners,
+  // preview it as a dashed rectangle, and report it for the auto-divide.
+  function coverageFromEvent(e: React.PointerEvent) {
+    const p = hostXY(e);
+    const start = dragStartRef.current;
+    if (!p || !start) return;
+    const minX = Math.min(start.x, p.x);
+    const maxX = Math.max(start.x, p.x);
+    const minY = Math.min(start.y, p.y);
+    const maxY = Math.max(start.y, p.y);
+    const tl = unproject(minX, minY);
+    const tr = unproject(maxX, minY);
+    const bl = unproject(minX, maxY);
+    const br = unproject(maxX, maxY);
+    if (!tl || !tr || !bl || !br) return;
+    const ov = coverageOverlayRef.current;
+    if (ov) {
+      ov.removeAll();
+      ov.add(A.polygon([tl, tr, br, bl]));
+      aladinRef.current?.view?.requestRedraw?.();
+    }
+    onCoverageRef.current?.({ tl, tr, bl, br });
+  }
+
+  function clearCoveragePreview() {
+    const ov = coverageOverlayRef.current;
+    if (ov) {
+      ov.removeAll();
+      aladinRef.current?.view?.requestRedraw?.();
     }
   }
 
   function onCapDown(e: React.PointerEvent) {
     draggingRef.current = true;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    placeFromEvent(e);
+    if (placeModeRef.current === "coverage") {
+      dragStartRef.current = hostXY(e);
+    } else {
+      placeFromEvent(e);
+    }
   }
   function onCapMove(e: React.PointerEvent) {
-    if (draggingRef.current) placeFromEvent(e);
+    if (!draggingRef.current) return;
+    if (placeModeRef.current === "coverage") coverageFromEvent(e);
+    else placeFromEvent(e);
   }
   function onCapUp(e: React.PointerEvent) {
     draggingRef.current = false;
     (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    if (placeModeRef.current === "coverage") {
+      dragStartRef.current = null;
+      clearCoveragePreview();
+    }
   }
 
   // Survey changes.
@@ -340,9 +419,13 @@ function AladinView(
   return (
     <div className="aladin-wrap">
       <div ref={divRef} className="aladin-host" />
-      {placing && (
+      {placeMode && (
         <div
-          className="mosaic-capture"
+          className={
+            placeMode === "coverage"
+              ? "mosaic-capture coverage"
+              : "mosaic-capture"
+          }
           onPointerDown={onCapDown}
           onPointerMove={onCapMove}
           onPointerUp={onCapUp}

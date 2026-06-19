@@ -13,6 +13,8 @@ import AladinView, {
   type FovBox,
   type AladinHandle,
   type TargetRender,
+  type PlaceMode,
+  type CoverageCorners,
 } from "./sky/AladinView";
 import ProjectList from "./panels/ProjectList";
 import EquipmentPanel from "./panels/EquipmentPanel";
@@ -20,7 +22,7 @@ import ProjectBuilder, {
   type ProjectDraft,
   type TargetDraft,
 } from "./panels/ProjectBuilder";
-import { mosaicPanels, fovTopTriangle } from "./sky/fov";
+import { mosaicPanels, fovTopTriangle, coverageToGrid } from "./sky/fov";
 import "./App.css";
 
 // Unique local id for a draft target. Avoids crypto.randomUUID(), which is
@@ -43,7 +45,7 @@ export default function App() {
   const [showFov, setShowFov] = useState(true);
   const [fovSize, setFovSize] = useState<FovBox | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(null);
-  const [placing, setPlacing] = useState(false);
+  const [placeMode, setPlaceMode] = useState<PlaceMode>(null);
   const aladinRef = useRef<AladinHandle>(null);
 
   useEffect(() => {
@@ -120,7 +122,7 @@ export default function App() {
   function newProject() {
     const t = makeTargetDraft("Target 1");
     setProjectDraft({ name: "New project", targets: [t], activeTargetId: t.id });
-    setPlacing(true);
+    setPlaceMode("move");
   }
 
   function addTarget() {
@@ -129,7 +131,7 @@ export default function App() {
       const t = makeTargetDraft(`Target ${d.targets.length + 1}`);
       return { ...d, targets: [...d.targets, t], activeTargetId: t.id };
     });
-    setPlacing(true);
+    setPlaceMode("move");
   }
 
   function removeTarget(id: string) {
@@ -160,6 +162,31 @@ export default function App() {
   function centerTargetHere() {
     const c = aladinRef.current?.getCenter();
     if (c) patchTarget({ centerRa: c[0], centerDec: c[1] });
+  }
+
+  // Coverage drag: auto-divide the dragged Area-of-Interest into rig-FOV panes
+  // that fully cover it, adopting the AoI's center, size and orientation.
+  function applyCoverage(c: CoverageCorners) {
+    if (!fovSize || fovSize.widthDeg <= 0 || !projectDraft) return;
+    const active = projectDraft.targets.find(
+      (t) => t.id === projectDraft.activeTargetId,
+    );
+    const g = coverageToGrid(
+      c.tl,
+      c.tr,
+      c.bl,
+      c.br,
+      fovSize.widthDeg,
+      fovSize.heightDeg,
+      active?.overlapPct ?? 10,
+    );
+    patchTarget({
+      centerRa: g.centerRa,
+      centerDec: g.centerDec,
+      cols: g.cols,
+      rows: g.rows,
+      rotationDeg: g.rotationDeg,
+    });
   }
 
   return (
@@ -202,11 +229,11 @@ export default function App() {
           <ProjectBuilder
             fov={fovSize}
             draft={projectDraft}
-            placing={placing}
+            placeMode={placeMode}
             onNewProject={newProject}
             onDiscard={() => {
               setProjectDraft(null);
-              setPlacing(false);
+              setPlaceMode(null);
             }}
             onRenameProject={(name) =>
               setProjectDraft((d) => (d ? { ...d, name } : d))
@@ -217,7 +244,7 @@ export default function App() {
             }
             onRemoveTarget={removeTarget}
             onPatchTarget={patchTarget}
-            onTogglePlacing={() => setPlacing((p) => !p)}
+            onSetMode={setPlaceMode}
             onCenterCurrent={centerTargetHere}
           />
           <ProjectList
@@ -234,10 +261,11 @@ export default function App() {
             focus={focus}
             fov={fovBox}
             draft={draftRender}
-            placing={placing}
+            placeMode={placeMode}
             onPlaceCenter={(ra, dec) =>
               patchTarget({ centerRa: ra, centerDec: dec })
             }
+            onCoverageDrag={applyCoverage}
             onTargetClick={(id) => {
               const t = targets.find((x) => x.id === id);
               if (t) selectTarget(t);

@@ -48,6 +48,50 @@ function localToRaDec(
   return offset(raDeg, decDeg, pa, sep);
 }
 
+/** Great-circle angular separation between two sky points (degrees). */
+export function angularDistance(
+  ra1: number,
+  dec1: number,
+  ra2: number,
+  dec2: number,
+): number {
+  const d1 = dec1 * DEG;
+  const d2 = dec2 * DEG;
+  const dRa = (ra2 - ra1) * DEG;
+  const c = Math.max(
+    -1,
+    Math.min(1, Math.sin(d1) * Math.sin(d2) + Math.cos(d1) * Math.cos(d2) * Math.cos(dRa)),
+  );
+  return Math.acos(c) * RAD;
+}
+
+/** Position angle (North through East, degrees, 0..360) from point 1 toward point 2. */
+export function positionAngle(
+  ra1: number,
+  dec1: number,
+  ra2: number,
+  dec2: number,
+): number {
+  const d1 = dec1 * DEG;
+  const d2 = dec2 * DEG;
+  const dRa = (ra2 - ra1) * DEG;
+  const y = Math.sin(dRa) * Math.cos(d2);
+  const x = Math.cos(d1) * Math.sin(d2) - Math.sin(d1) * Math.cos(d2) * Math.cos(dRa);
+  return ((Math.atan2(y, x) * RAD) % 360 + 360) % 360;
+}
+
+/** Midpoint along the great circle between two sky points. */
+export function sphericalMidpoint(
+  ra1: number,
+  dec1: number,
+  ra2: number,
+  dec2: number,
+): [number, number] {
+  const sep = angularDistance(ra1, dec1, ra2, dec2);
+  if (sep === 0) return [ra1, dec1];
+  return offset(ra1, dec1, positionAngle(ra1, dec1, ra2, dec2), sep / 2);
+}
+
 /** Four corners of a widthDeg x heightDeg rectangle rotated by rotationDeg. */
 export function fovCorners(
   raDeg: number,
@@ -135,6 +179,62 @@ export function mosaicPanels(
     }
   }
   return panels;
+}
+
+/** Minimum number of panes (each paneDeg wide) to fully cover `coverageDeg`. */
+export function panesToCover(
+  coverageDeg: number,
+  paneDeg: number,
+  overlapPct: number,
+): number {
+  if (paneDeg <= 0 || coverageDeg <= paneDeg) return 1;
+  const step = paneDeg * (1 - overlapPct / 100); // center-to-center spacing
+  if (step <= 0) return 1;
+  return 1 + Math.ceil((coverageDeg - paneDeg) / step);
+}
+
+/**
+ * Given the four sky corners of a dragged Area-of-Interest rectangle, derive the
+ * mosaic that fully covers it at the current pane FOV: center, panes (NxM) and the
+ * rotation/position-angle of the AoI itself. Corners are [ra,dec]; tl/tr/bl/br are
+ * the screen top-left/top-right/bottom-left/bottom-right after un-projection.
+ */
+export function coverageToGrid(
+  tl: [number, number],
+  tr: [number, number],
+  bl: [number, number],
+  br: [number, number],
+  paneWidthDeg: number,
+  paneHeightDeg: number,
+  overlapPct: number,
+): {
+  centerRa: number;
+  centerDec: number;
+  cols: number;
+  rows: number;
+  rotationDeg: number;
+} {
+  const [centerRa, centerDec] = sphericalMidpoint(tl[0], tl[1], br[0], br[1]);
+  const width =
+    (angularDistance(tl[0], tl[1], tr[0], tr[1]) +
+      angularDistance(bl[0], bl[1], br[0], br[1])) /
+    2;
+  const height =
+    (angularDistance(tl[0], tl[1], bl[0], bl[1]) +
+      angularDistance(tr[0], tr[1], br[0], br[1])) /
+    2;
+  // Rotation = PA of the AoI's "up" axis (bottom-edge midpoint -> top-edge midpoint),
+  // matching the height-axis convention fovCorners()/localToRaDec() use.
+  const [bRa, bDec] = sphericalMidpoint(bl[0], bl[1], br[0], br[1]);
+  const [tRa, tDec] = sphericalMidpoint(tl[0], tl[1], tr[0], tr[1]);
+  const rotationDeg = positionAngle(bRa, bDec, tRa, tDec);
+  return {
+    centerRa,
+    centerDec,
+    cols: panesToCover(width, paneWidthDeg, overlapPct),
+    rows: panesToCover(height, paneHeightDeg, overlapPct),
+    rotationDeg,
+  };
 }
 
 export interface FovCalc {
