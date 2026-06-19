@@ -101,13 +101,28 @@
   position: relative;
   min-width: 0;
 }
-.aladin-host {
-  /* Fill .sky with percentage sizing rather than absolute inset:0 — Aladin
-     forces the container to position:relative on init, which would void inset
-     and collapse the height to zero. .sky has a definite height (flex), so
-     height:100% resolves correctly. */
+.aladin-wrap {
+  /* Wrapper so the mosaic placement capture layer can overlay the sky. */
+  position: relative;
   width: 100%;
   height: 100%;
+}
+.aladin-host {
+  /* Fill the wrapper with percentage sizing rather than absolute inset:0 —
+     Aladin forces the container to position:relative on init, which would void
+     inset and collapse the height to zero. The wrapper has a definite height,
+     so height:100% resolves correctly. */
+  width: 100%;
+  height: 100%;
+}
+.mosaic-capture {
+  /* Transparent layer shown only while placing a mosaic; it intercepts clicks
+     and drags so Aladin's own pan handlers don't fight the placement. */
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 /* Equipment panel */
@@ -221,6 +236,112 @@
   color: #ff6b6b;
   font-size: 11px;
   line-height: 1.3;
+}
+
+/* Project builder (mirrors the equipment panel) */
+.project-builder {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.project-builder > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.project-builder > summary::-webkit-details-marker {
+  display: none;
+}
+.project-builder .eq-fov {
+  color: #ffb300;
+}
+.project-builder .eq-row button {
+  flex: 1;
+}
+.project-builder > .eq-body > button {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.project-builder > .eq-body > button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pb-sep {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+  width: 100%;
+}
+
+/* Target list within a project draft */
+.target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.target-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 13px;
+}
+.target-row.active {
+  border-color: #ffb300;
+  box-shadow: inset 0 0 0 1px #ffb300;
+}
+.target-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.target-panes {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #ffb300;
+}
+.target-del {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.target-del:hover {
+  color: #ff6b6b;
+}
+
+.mo-grid {
+  display: flex;
+  gap: 6px;
+}
+.mo-grid .eq-field {
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+.mo-grid .eq-field input {
+  width: 100%;
+}
+.mo-place.active {
+  background: #ffb300;
+  color: #1a1205;
+  border-color: #ffb300;
+  font-weight: 600;
 }
 
 /* Project list */

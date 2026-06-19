@@ -31,3 +31,7 @@ frontend/*.mjs
 
 # Editor / OS
 .DS_Store
+.env
+.claude/settings.local.json
+cursor.mcp.json
+gemini.mcp.json
