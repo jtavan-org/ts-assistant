@@ -1,0 +1,38 @@
+:root {
+  --bg: #0d0f14;
+  --panel: #161922;
+  --panel-2: #1d212c;
+  --border: #2a2f3c;
+  --text: #c2c8d4;
+  --text-dim: #8a91a0;
+  --text-h: #f3f5fa;
+  --accent: #ffb000;
+  --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  font: 14px/1.45 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+code {
+  font-family: var(--mono);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+  color: var(--text-h);
+}

@@ -1,0 +1,33 @@
+# App-local working data: working copies of the TS db, backups, equipment store
+/data/
+
+# The user's Target Scheduler database(s) live here; never commit them
+/sample_database/*.sqlite
+/sample_database/*.sqlite3
+/sample_database/*.db
+
+# Generated schema doc (regenerated from the db via app.db.introspect)
+/SCHEMA.md
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+
+# Local verification scratch (Playwright harnesses, screenshots)
+frontend/*.mjs
+*.png
+
+# Local tooling state
+.ntm/
+.beads/*.db
+.beads/*.db-wal
+.beads/*.db-shm
+
+# Editor / OS
+.DS_Store
