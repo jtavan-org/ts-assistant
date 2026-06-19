@@ -48,6 +48,10 @@ the original database.
   **staging** Target Scheduler database (`data/export/`) for you to import into
   NINA; it's additive-only, auto-backed-up, and undoable, and never touches your
   live database.
+- **Reuse plan groups.** Save a named bundle of exposure plans (a "plan group"
+  like *LRGB Dark Nebula* or *SHO Bright Target*) once, then apply it to any
+  project's targets in a single pick. Plan groups are a TS-Assistant convenience,
+  stored app-side — they expand into ordinary exposure plans when you save.
 
 ## Architecture
 
@@ -56,8 +60,8 @@ the original database.
   survey catalog, and equipment profiles as JSON. The source database is never
   modified; created projects are written to a separate **staging** database.
 - **frontend/** — Vite + React + TypeScript. Aladin Lite sky view, survey
-  switcher, named-object overlay, equipment panel, project/mosaic builder, and a
-  project/target browser with click-to-center.
+  switcher, named-object overlay, equipment panel, plan-groups panel,
+  project/mosaic builder, and a project/target browser with click-to-center.
 
 ```
 Target Scheduler db  ──copy(ro)──▶  backend (FastAPI)
@@ -70,8 +74,9 @@ Target Scheduler db  ──copy(ro)──▶  backend (FastAPI)
                           staging db (data/export/) ──import──▶ NINA
 ```
 
-Equipment profiles are **app-local data** (stored in `data/equipment.json`),
-*not* in your Target Scheduler database.
+Equipment profiles and plan groups are **app-local data** (stored in
+`data/equipment.json` and `data/plan_groups.json`), *not* in your Target Scheduler
+database.
 
 ## Quick start
 
@@ -134,6 +139,10 @@ backend lives elsewhere.
 - **Equipment** panel (sidebar): pick or create a rig. Edits show a live plate
   scale + FOV readout and update the on-sky FOV box. Profiles persist via the
   backend (`data/equipment.json`).
+- **Plan groups** panel (sidebar): create, edit, or delete named, reusable bundles
+  of exposure plans (each row = a Select-Exposure-Template pick + a frame count).
+  Groups are saved app-side (`data/plan_groups.json`) and can be applied to a
+  project in one pick (see below).
 - **Project** panel (sidebar): start a new project draft (it begins with a single
   1×1 target at the view center), add more targets, and for each target set
   columns/rows (panes), overlap % (mosaics only), and rotation. Position a target
@@ -148,11 +157,13 @@ backend lives elsewhere.
     afterward.
 
   The coverage readout shows the overall framed area. To save the project, add at
-  least one **Exposure plan** (the ＋ button adds a row). Each row is a required
-  **Select Exposure Template** dropdown — listing your existing Target Scheduler
-  templates, labelled like `name · filter · 900s · Gain: 56` — plus a desired
-  frame count. The filter and sub-exposure come from the chosen template, so there
-  is no free-text filter or manual exposure entry. (The NINA profile is seeded
+  least one **Exposure plan** (the ＋ button adds a row), or use the **Apply plan
+  group…** dropdown to fill the plans from a saved group in one pick (still
+  editable afterward). Each plan row is a required **Select Exposure Template**
+  dropdown — listing your existing Target Scheduler templates, labelled like
+  `name · filter · 900s · Gain: 56` — plus a desired frame count. The filter and
+  sub-exposure come from the chosen template, so there is no free-text filter or
+  manual exposure entry. (The NINA profile is seeded
   automatically from your existing projects; there is no profile field to fill.)
   The **Save to database** button enables once the project has a name, a target,
   and an exposure plan with a template selected; saving expands each mosaic into
@@ -179,6 +190,10 @@ All endpoints are under `/api`:
 | POST | `/equipment` | Create a profile (server mints the id). |
 | PUT | `/equipment/{id}` | Update a profile. |
 | DELETE | `/equipment/{id}` | Delete a profile. |
+| GET | `/plan-groups` | App-local reusable exposure-plan groups. |
+| POST | `/plan-groups` | Create a plan group. |
+| PUT | `/plan-groups/{id}` | Update a plan group. |
+| DELETE | `/plan-groups/{id}` | Delete a plan group. |
 | POST | `/export` | Additively write a project + targets + exposure plans to a **staging** copy (`data/export/`), after validation and an automatic backup. Returns an operation summary (`operation_id`, `backup_path`, `project_id`, `target_ids`, counts). |
 | POST | `/export/{operation_id}/undo` | Remove exactly the rows a previous export added (refused if any have captured progress). |
 
@@ -260,9 +275,9 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
   `TS_ASSISTANT_ALLOW_LIVE_WRITE` and not exposed in the API or UI.
 - **Limited exposure-template / rule-weight editing.** When building a project you
   can reference your existing Target Scheduler exposure templates in a plan
-  (`qiz.1`), but you cannot yet **create** new templates from the app (`qiz.5`,
-  next), build reusable app-side **exposure plan groups** (`759`), or tune rule
-  weights. Exposure plans on existing projects remain read-only.
+  (`qiz.1`) and bundle plans into reusable plan groups (`759`), but you cannot yet
+  **create** new templates from the app (`qiz.5`, next) or tune rule weights.
+  Exposure plans on existing projects remain read-only.
 - **Target search is Aladin's, by design.** You resolve objects by name via Aladin
   Lite's built-in Simbad search bar (plus the named-objects overlay and
   click/center to position). A custom TS-Assistant search box was considered and
@@ -287,12 +302,12 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
   transactional additive writer with backup + undo (`mh3.2`), pre-write validation
   (`mh3.3`), the export API (`mh3.4`), and the create-Project-from-mosaic Save UI
   (`mh3.5`) are all merged. Save → staging export, end-to-end.
-- **P4 — Exposure plans, templates & polish** *(in progress)* — reference existing
-  exposure templates in a plan (`qiz.1`, done); still to come: create templates
-  (`qiz.5`), reusable app-side exposure plan groups (`759`), editing existing Draft
-  projects with a staging-vs-live write toggle (`o2c`, which also persists created
-  projects across reloads, resolving `2ij`), a top-level NINA profile selector
-  (`bg0`), rule weights, and UX cleanup.
+- **P4 — Exposure plans, templates & polish** *(in progress)* — done so far:
+  reference existing exposure templates in a plan (`qiz.1`) and reusable app-side
+  exposure plan groups (`759`). Still to come: create templates (`qiz.5`, next),
+  editing existing Draft projects with a staging-vs-live write toggle (`o2c`, which
+  also persists created projects across reloads, resolving `2ij`), a top-level NINA
+  profile selector (`bg0`), rule weights, and UX cleanup.
 
 ---
 
