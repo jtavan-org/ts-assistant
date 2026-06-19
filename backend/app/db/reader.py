@@ -15,6 +15,7 @@ from .models import (
     EPOCH_CODE,
     PROJECT_STATE,
     ExposurePlan,
+    ExposureTemplate,
     Project,
     SchemaInfo,
     Target,
@@ -155,6 +156,78 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
         )
 
     return list(projects.values())
+
+
+def _opt_int(v: Any) -> int | None:
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _opt_float(v: Any) -> float | None:
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _opt_bool(v: Any) -> bool | None:
+    return None if v is None else bool(v)
+
+
+def load_exposure_templates_conn(conn: sqlite3.Connection) -> list[ExposureTemplate]:
+    """Read all exposure templates (full columns) from a connection.
+
+    Tolerant of missing columns so it survives Target Scheduler schema drift —
+    any absent column projects to None.
+    """
+    conn.row_factory = sqlite3.Row
+    tables = introspect(conn)
+    t_template = _find_table(tables, "exposuretemplate", "exposure_template")
+    if not t_template:
+        return []
+    out: list[ExposureTemplate] = []
+    for r in conn.execute(f'SELECT * FROM "{t_template}"'):
+        tid = _row_get(r, "Id", "id")
+        if tid is None:
+            continue
+        out.append(
+            ExposureTemplate(
+                id=int(tid),
+                profile_id=_row_get(r, "ProfileId", "profileId"),
+                name=_row_get(r, "name", default=f"Template {int(tid)}"),
+                filter_name=_row_get(r, "filterName", "filtername"),
+                gain=_opt_int(_row_get(r, "gain")),
+                offset=_opt_int(_row_get(r, "offset")),
+                binning=_opt_int(_row_get(r, "bin", "binning")),
+                readout_mode=_opt_int(_row_get(r, "readoutmode", "readoutMode")),
+                twilight_level=_opt_int(_row_get(r, "twilightlevel", "twilightLevel")),
+                moon_avoidance_enabled=_opt_bool(
+                    _row_get(r, "moonavoidanceenabled", "moonAvoidanceEnabled")
+                ),
+                moon_avoidance_separation=_opt_float(
+                    _row_get(r, "moonavoidanceseparation", "moonAvoidanceSeparation")
+                ),
+                moon_avoidance_width=_opt_int(
+                    _row_get(r, "moonavoidancewidth", "moonAvoidanceWidth")
+                ),
+                maximum_humidity=_opt_float(_row_get(r, "maximumhumidity", "maximumHumidity")),
+                default_exposure=_opt_float(_row_get(r, "defaultexposure", "defaultExposure")),
+                dither_every=_opt_int(_row_get(r, "ditherevery", "ditherEvery")),
+                minutes_offset=_opt_int(_row_get(r, "minutesOffset", "minutesoffset")),
+            )
+        )
+    return out
+
+
+def load_exposure_templates() -> list[ExposureTemplate]:
+    """Load all exposure templates from the working copy (qiz.1 picker)."""
+    wc = get_working_copy()
+    if wc is None:
+        return []
+    with connect_readonly(wc) as conn:
+        return load_exposure_templates_conn(conn)
 
 
 def load_targets() -> list[Target]:

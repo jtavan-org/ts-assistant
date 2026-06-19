@@ -11,9 +11,11 @@ plotted on the sky, switch between survey imagery, and frame single pointings or
 multi-panel mosaics against your rig's real field of view — all without touching
 the original database.
 
-> **Status:** read-only sky overview **plus** equipment/FOV and mosaic *framing*
-> (drafting). Writing projects back to the Target Scheduler database is **not yet
-> implemented** — see [Known gaps & limitations](#known-gaps--limitations).
+> **Status:** read-only sky overview, equipment/FOV + mosaic framing, **and**
+> project creation — you can now build a project and **save** it (exported to a
+> staging Target Scheduler database you then import into NINA). Direct writes to
+> your live database are intentionally not exposed. See
+> [Known gaps & limitations](#known-gaps--limitations).
 
 ## What it does today
 
@@ -39,23 +41,32 @@ the original database.
   you set panes, overlap (only when it's a mosaic), and rotation, position it on
   the sky, and read off the total coverage area. The panel grid is drawn live on
   the sky dome.
+- **Create projects (save / export).** Give the project a NINA profile and
+  exposure plans (filter + sub-exposure + frame count), then **Save** — each
+  framed mosaic is expanded into per-pane targets and written as a Project +
+  Targets + ExposurePlans. The write goes to a **staging** Target Scheduler
+  database (`data/export/`) for you to import into NINA; it's additive-only,
+  auto-backed-up, and undoable, and never touches your live database.
 
 ## Architecture
 
-- **backend/** — Python + FastAPI. Opens a *copy* of `schedulerdb.sqlite`
-  read-only, introspects the real schema, and serves projects/targets,
-  the HiPS survey catalog, and equipment profiles as JSON. The source database
-  is never modified.
+- **backend/** — Python + FastAPI. Reads a *copy* of `schedulerdb.sqlite`
+  read-only, introspects the real schema, and serves projects/targets, the HiPS
+  survey catalog, and equipment profiles as JSON. The source database is never
+  modified; created projects are written to a separate **staging** database.
 - **frontend/** — Vite + React + TypeScript. Aladin Lite sky view, survey
   switcher, named-object overlay, equipment panel, project/mosaic builder, and a
   project/target browser with click-to-center.
 
 ```
-Target Scheduler db  ──copy──▶  backend (FastAPI, read-only)
+Target Scheduler db  ──copy(ro)──▶  backend (FastAPI)
                                       │  /api/projects, /api/surveys,
-                                      │  /api/equipment, /api/schema
+                                      │  /api/equipment, /api/schema, /api/export
                                       ▼
                           frontend (React + Aladin Lite)
+                                      │  Save
+                                      ▼
+                          staging db (data/export/) ──import──▶ NINA
 ```
 
 Equipment profiles are **app-local data** (stored in `data/equipment.json`),
@@ -135,8 +146,16 @@ backend lives elsewhere.
     Aladin view is rotated, the grid tilts to match). cols/rows stay editable
     afterward.
 
-  The coverage readout shows the overall framed area. *Saving a draft back to the
-  database is not yet wired up.*
+  The coverage readout shows the overall framed area. To save the project, fill in
+  the **NINA profile** field (type an id, or pick one of the suggestions drawn
+  from your existing projects) and add at least one **Exposure plan** (the ＋
+  button adds a row: filter name, sub-exposure in seconds, and desired frame
+  count). The **Save to database** button enables once the project has a name, a
+  profile, a target, and an exposure plan; saving expands each mosaic into
+  per-pane targets and writes them to a staging database via `POST /api/export`.
+  The saved project appears in the list and on the sky for the session — note it
+  is **session-local and disappears on reload** (reads come from your source
+  database copy, not the staging export; see [Known gaps](#known-gaps--limitations)).
 - **Projects** panel (sidebar): the read-only list of existing projects/targets
   from the database; click a target to center on it.
 
@@ -155,6 +174,13 @@ All endpoints are under `/api`:
 | POST | `/equipment` | Create a profile (server mints the id). |
 | PUT | `/equipment/{id}` | Update a profile. |
 | DELETE | `/equipment/{id}` | Delete a profile. |
+| POST | `/export` | Additively write a project + targets + exposure plans to a **staging** copy (`data/export/`), after validation and an automatic backup. Returns an operation summary (`operation_id`, `backup_path`, `project_id`, `target_ids`, counts). |
+| POST | `/export/{operation_id}/undo` | Remove exactly the rows a previous export added (refused if any have captured progress). |
+
+The Project panel's **Save to database** button posts to `POST /api/export`.
+Writes target a safe staging copy under `data/export/`, never the live Target
+Scheduler database; live writes are env-gated (`TS_ASSISTANT_ALLOW_LIVE_WRITE`)
+and not exposed over HTTP.
 
 Read-model notes: RA is stored in **hours** in the Target Scheduler DB and
 converted to degrees (×15) by the reader; Dec is degrees. Project `state` and
@@ -163,15 +189,19 @@ missing columns / schema drift across Target Scheduler versions.
 
 ## Safety model
 
-The app operates on a **copy** of the database (snapshotted into `data/working/`)
-and opens it in SQLite read-only URI mode (`?mode=ro`). The current build has no
-write paths into the Target Scheduler database at all. The working copy is
+Reads operate on a **copy** of the database (snapshotted into `data/working/`),
+opened in SQLite read-only URI mode (`?mode=ro`). The working copy is
 re-snapshotted from the source on each read, so changes you make in NINA show up
-on the next request.
+on the next request. The reader never writes to your source database.
 
-The future export feature (create projects/targets) is planned to be an explicit,
-validated step that takes an automatic timestamped backup (`data/backups/`)
-first.
+The export path (mh3.4, `POST /api/export`) writes only to a separate **staging
+copy** under `data/export/` — never your live Target Scheduler database — and is
+deliberately **additive-only**: it inserts a new project with its targets and
+exposure plans and never modifies or deletes existing rows. Every export is
+preceded by an automatic timestamped backup and is undoable
+(`POST /api/export/{operation_id}/undo`). Direct writes to the live database exist
+in the writer but are gated behind the `TS_ASSISTANT_ALLOW_LIVE_WRITE` environment
+variable and are not exposed via the API or UI.
 
 > CORS is open to all origins by design — this is a local, single-user tool with
 > no auth or cookies, intended to be reachable across your LAN.
@@ -213,16 +243,16 @@ object count, so the catalog size is intentionally not pinned in these docs.)
 These are the things that are **not** done or that may surprise you. Tracked in
 more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`).
 
-- **No user-facing write / export path yet (P3).** You cannot save a drafted
-  project, target, or mosaic back to the Target Scheduler database from the UI:
-  the "Save to database" button is intentionally disabled and the mosaic builder
-  is a framing *preview* only (per-panel RA/Dec is computed but not persisted).
-  Backend groundwork has landed — a faithful writer *seed* (`app/db/writer.py`)
-  plus a passing schema round-trip fidelity test (`tests/test_roundtrip.py`, bead
-  `mh3.1`) that proves a written database is schema-identical to a NINA-written
-  one and reads back losslessly — but the transactional writer/exporter,
-  validation, automatic backup, and the export API + create-from-mosaic UI are
-  still to come.
+- **Saved projects are session-local until imported.** A project you Save shows up
+  in the list and on the sky for the current session, but **disappears on reload**:
+  it's written to the staging export database (`data/export/`), while the read path
+  loads only your source database copy. To make it permanent you import the staging
+  database into NINA. Persisting created projects across reloads is tracked as bead
+  `2ij`.
+- **Save targets a staging database, not your live one.** Saving produces a staging
+  Target Scheduler DB you import into NINA, rather than writing into the database
+  the app read from. Direct live writes exist in the backend but are gated behind
+  `TS_ASSISTANT_ALLOW_LIVE_WRITE` and not exposed in the API or UI.
 - **No exposure-plan / template / rule-weight editing.** Exposure plans are shown
   read-only (nested under targets); there is no UI to create or edit exposure
   templates, assign plans, or tune rule weights yet.
@@ -246,12 +276,13 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
 - **P2 — FOV & mosaic framing** *(done)* — equipment/FOV definition +
   draw/position/rotate a mosaic grid, plus coverage-area framing (drag a region →
   auto-divide into rig-FOV panels).
-- **P3 — Write / export path** *(in progress)* — the schema round-trip fidelity
-  gating test (`mh3.1`) and a faithful writer seed have landed; remaining: the
-  transactional writer/exporter, validation, automatic backup, the export API, and
-  the create-Project-from-mosaic UI.
-- **P4 — Exposure plans, templates & polish** *(planned)* — exposure
-  plan/template assignment UI, rule weights, target search/resolver, UX cleanup.
+- **P3 — Write / export path** *(done)* — schema round-trip gating test (`mh3.1`),
+  transactional additive writer with backup + undo (`mh3.2`), pre-write validation
+  (`mh3.3`), the export API (`mh3.4`), and the create-Project-from-mosaic Save UI
+  (`mh3.5`) are all merged. Save → staging export, end-to-end.
+- **P4 — Exposure plans, templates & polish** *(next)* — exposure plan/template
+  assignment UI, rule weights, target search/resolver, persisting created projects
+  across reloads (`2ij`), UX cleanup.
 
 ---
 

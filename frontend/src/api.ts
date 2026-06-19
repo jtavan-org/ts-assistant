@@ -51,6 +51,25 @@ export interface Project {
   targets: Target[];
 }
 
+export interface ExposureTemplate {
+  id: number;
+  profile_id: string | null;
+  name: string;
+  filter_name: string | null;
+  gain: number | null;
+  offset: number | null;
+  binning: number | null;
+  readout_mode: number | null;
+  twilight_level: number | null;
+  moon_avoidance_enabled: boolean | null;
+  moon_avoidance_separation: number | null;
+  moon_avoidance_width: number | null;
+  maximum_humidity: number | null;
+  default_exposure: number | null;
+  dither_every: number | null;
+  minutes_offset: number | null;
+}
+
 export interface Health {
   status: string;
   db_present: boolean;
@@ -98,9 +117,10 @@ async function sendJSON<T>(
 // --- export (write path) ---------------------------------------------------
 
 export interface ExportPlanInput {
-  filter_name: string;
+  filter_name: string | null;
   exposure: number;
   desired: number;
+  exposure_template_id?: number | null;
 }
 
 export interface ExportTargetInput {
@@ -156,6 +176,8 @@ export const createExport = (req: ExportRequest) =>
 export const fetchHealth = () => getJSON<Health>("/health");
 export const fetchSurveys = () => getJSON<Survey[]>("/surveys");
 export const fetchProjects = () => getJSON<Project[]>("/projects");
+export const fetchExposureTemplates = () =>
+  getJSON<ExposureTemplate[]>("/exposure-templates");
 export const fetchEquipment = () => getJSON<Equipment[]>("/equipment");
 export const createEquipment = (e: EquipmentInput) =>
   sendJSON<Equipment>("/equipment", "POST", e);

@@ -73,6 +73,20 @@ def test_exposure_plans_with_filter_names(reader):
     assert ha.accepted == 10
 
 
+def test_loads_exposure_templates(reader):
+    templates = reader.load_exposure_templates()
+    by_filter = {t.filter_name: t for t in templates}
+    assert sorted(by_filter) == ["Ha", "OIII", "SII"]
+    ha = by_filter["Ha"]
+    assert ha.name == "Ha"
+    assert ha.default_exposure == pytest.approx(300.0)
+    assert ha.id > 0
+    # full columns project through with the fixture's defaults
+    assert ha.gain == -1
+    assert ha.moon_avoidance_enabled is False
+    assert ha.moon_avoidance_separation == pytest.approx(0.0)
+
+
 def test_schema_info(reader):
     info = reader.schema_info()
     assert info.db_present is True

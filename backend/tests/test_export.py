@@ -184,6 +184,46 @@ def test_additive_guarantee(tmp_path):
     conn.close()
 
 
+def test_plan_references_existing_template(tmp_path):
+    """qiz.1 picker: a plan with exposure_template_id reuses that template — no new
+    bare template is created, and the plan points at the referenced Id."""
+    db = _baseline(tmp_path / "t.sqlite")
+    conn = sqlite3.connect(db)
+    base_templates = _rows(conn, "exposuretemplate")
+    conn.close()
+    assert base_templates, "baseline should have the 'L' template to reference"
+    existing_id = next(iter(base_templates))
+
+    spec = ProjectSpec(
+        profile_id=PROFILE,
+        name="Refs existing template",
+        targets=[
+            TargetSpec(
+                name="T1",
+                ra_deg=10.0,
+                dec_deg=10.0,
+                exposure_plans=[
+                    ExposurePlanSpec(exposure_template_id=existing_id, exposure=300.0, desired=5)
+                ],
+            )
+        ],
+    )
+    res = export_project(spec, target_db=db, now=T0)
+
+    conn = sqlite3.connect(db)
+    after_templates = _rows(conn, "exposuretemplate")
+    # no new template row, and the referenced one is byte-identical
+    assert len(after_templates) == len(base_templates)
+    assert after_templates[existing_id] == base_templates[existing_id]
+    # the plan we wrote points at the existing template
+    plan_tmpl = conn.execute(
+        "SELECT exposureTemplateId FROM exposureplan WHERE Id = ?", (res.plan_ids[0],)
+    ).fetchone()[0]
+    conn.close()
+    assert plan_tmpl == existing_id
+    assert res.template_ids == {}  # we created/own no templates this op
+
+
 def test_ra_persisted_in_hours_through_wrapper(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
     export_project(_new_project(), target_db=db, now=T0)

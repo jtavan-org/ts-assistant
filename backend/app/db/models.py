@@ -50,6 +50,32 @@ class Project(BaseModel):
     targets: list[Target] = []
 
 
+class ExposureTemplate(BaseModel):
+    """A Target Scheduler exposure template (capture definition for one filter).
+
+    Surfaced so exposure plans can reference the user's real, fully-configured
+    templates (gain/offset/bin/moon-avoidance) instead of an auto-created bare one.
+    Columns beyond Id/name/filter are tolerant of schema drift (None when absent).
+    """
+
+    id: int
+    profile_id: str | None = None
+    name: str
+    filter_name: str | None = None
+    gain: int | None = None
+    offset: int | None = None
+    binning: int | None = None
+    readout_mode: int | None = None
+    twilight_level: int | None = None
+    moon_avoidance_enabled: bool | None = None
+    moon_avoidance_separation: float | None = None
+    moon_avoidance_width: int | None = None
+    maximum_humidity: float | None = None
+    default_exposure: float | None = None
+    dither_every: int | None = None
+    minutes_offset: int | None = None
+
+
 class SchemaInfo(BaseModel):
     """Lightweight schema summary surfaced for diagnostics."""
 

@@ -27,13 +27,21 @@ from .schema import create_schema
 
 
 class ExposurePlanSpec(BaseModel):
-    """One exposure plan, identified by the filter it images through."""
+    """One exposure plan.
 
-    filter_name: str
+    Either references an existing exposure *template* by Id
+    (``exposure_template_id``) — the qiz.1 picker path, where the plan inherits the
+    user's real gain/offset/bin/moon-avoidance settings — or, when no template is
+    chosen, falls back to ``filter_name`` and a bare template is auto-created
+    per (profile, filter) for compatibility with the original Save flow.
+    """
+
+    filter_name: str | None = None
     exposure: float
     desired: int = 1
     acquired: int = 0
     accepted: int = 0
+    exposure_template_id: int | None = None
 
 
 class TargetSpec(BaseModel):
@@ -161,7 +169,16 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
         target_ids.append(target_id)
 
         for p in t.exposure_plans:
-            template_id = _ensure_template(conn, spec.profile_id, p.filter_name, templates)
+            if p.exposure_template_id is not None:
+                # Reference an existing template (qiz.1 picker): inherits the user's
+                # real settings; not ours, so never recorded in template_ids/provenance.
+                template_id = p.exposure_template_id
+            elif p.filter_name:
+                template_id = _ensure_template(conn, spec.profile_id, p.filter_name, templates)
+            else:
+                raise ValueError(
+                    "exposure plan needs either exposure_template_id or filter_name"
+                )
             ecur = conn.execute(
                 "INSERT INTO exposureplan"
                 " (profileId, exposure, desired, acquired, accepted, targetid,"

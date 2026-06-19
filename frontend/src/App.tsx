@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createExport,
+  fetchExposureTemplates,
   fetchHealth,
   fetchProjects,
   fetchSurveys,
   type ExportTargetInput,
+  type ExposureTemplate,
   type Health,
   type Project,
   type Survey,
@@ -40,6 +42,7 @@ export default function App() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [surveyId, setSurveyId] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [templates, setTemplates] = useState<ExposureTemplate[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
   const [focus, setFocus] = useState<SkyFocus | null>(null);
@@ -66,6 +69,9 @@ export default function App() {
     fetchProjects()
       .then(setProjects)
       .catch((e) => setError(String(e)));
+    fetchExposureTemplates()
+      .then(setTemplates)
+      .catch(() => {});
   }, []);
 
   const survey = useMemo(
@@ -135,12 +141,20 @@ export default function App() {
   function newProject() {
     const t = makeTargetDraft("Target 1");
     setProjectDraft({
+      // Profile is hidden in the UI; derive it from the existing projects, or
+      // fall back to a template's profile (everything is one profile for now).
       name: "New project",
-      profileId: profiles[0] ?? "",
+      profileId: profiles[0] ?? templates[0]?.profile_id ?? "",
       targets: [t],
       activeTargetId: t.id,
       exposurePlans: [
-        { id: newTargetId(), filterName: "L", exposure: 120, desired: 20 },
+        {
+          id: newTargetId(),
+          filterName: "",
+          exposure: 120,
+          desired: 20,
+          exposureTemplateId: null,
+        },
       ],
     });
     setPlaceMode("move");
@@ -193,14 +207,28 @@ export default function App() {
             ...d,
             exposurePlans: [
               ...d.exposurePlans,
-              { id: newTargetId(), filterName: "", exposure: 120, desired: 20 },
+              {
+                id: newTargetId(),
+                filterName: "",
+                exposure: 120,
+                desired: 20,
+                exposureTemplateId: null,
+              },
             ],
           }
         : d,
     );
   }
 
-  function patchPlan(id: string, patch: Partial<{ filterName: string; exposure: number; desired: number }>) {
+  function patchPlan(
+    id: string,
+    patch: Partial<{
+      filterName: string;
+      exposure: number;
+      desired: number;
+      exposureTemplateId: number | null;
+    }>,
+  ) {
     setProjectDraft((d) =>
       d
         ? {
@@ -226,10 +254,15 @@ export default function App() {
     if (!projectDraft || !fovSize || fovSize.widthDeg <= 0) return;
     const draft = projectDraft;
     const plans = draft.exposurePlans
-      .filter((p) => p.filterName.trim())
-      .map((p) => ({ filter_name: p.filterName.trim(), exposure: p.exposure, desired: p.desired }));
+      .filter((p) => p.exposureTemplateId != null)
+      .map((p) => ({
+        filter_name: p.filterName.trim() || null,
+        exposure: p.exposure,
+        desired: p.desired,
+        exposure_template_id: p.exposureTemplateId,
+      }));
     if (!plans.length) {
-      setSaveResult({ ok: false, message: "Add at least one exposure plan (filter)." });
+      setSaveResult({ ok: false, message: "Select an exposure template for at least one plan." });
       return;
     }
 
@@ -298,7 +331,7 @@ export default function App() {
             desired: p.desired,
             acquired: 0,
             accepted: 0,
-            exposure_template_id: null,
+            exposure_template_id: p.exposure_template_id ?? null,
           })),
         })),
       };
@@ -393,7 +426,7 @@ export default function App() {
             fov={fovSize}
             draft={projectDraft}
             placeMode={placeMode}
-            profiles={profiles}
+            templates={templates}
             saving={saving}
             saveResult={saveResult}
             onNewProject={newProject}
@@ -404,9 +437,6 @@ export default function App() {
             }}
             onRenameProject={(name) =>
               setProjectDraft((d) => (d ? { ...d, name } : d))
-            }
-            onSetProfile={(profileId) =>
-              setProjectDraft((d) => (d ? { ...d, profileId } : d))
             }
             onAddTarget={addTarget}
             onSelectTarget={(id) =>
