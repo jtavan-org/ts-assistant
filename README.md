@@ -41,12 +41,13 @@ the original database.
   you set panes, overlap (only when it's a mosaic), and rotation, position it on
   the sky, and read off the total coverage area. The panel grid is drawn live on
   the sky dome.
-- **Create projects (save / export).** Give the project a NINA profile and
-  exposure plans (filter + sub-exposure + frame count), then **Save** — each
-  framed mosaic is expanded into per-pane targets and written as a Project +
-  Targets + ExposurePlans. The write goes to a **staging** Target Scheduler
-  database (`data/export/`) for you to import into NINA; it's additive-only,
-  auto-backed-up, and undoable, and never touches your live database.
+- **Create projects (save / export).** Add one or more exposure plans — each
+  picks one of your existing Target Scheduler **exposure templates** and a desired
+  frame count — then **Save**. Each framed mosaic is expanded into per-pane targets
+  and written as a Project + Targets + ExposurePlans. The write goes to a
+  **staging** Target Scheduler database (`data/export/`) for you to import into
+  NINA; it's additive-only, auto-backed-up, and undoable, and never touches your
+  live database.
 
 ## Architecture
 
@@ -146,12 +147,15 @@ backend lives elsewhere.
     Aladin view is rotated, the grid tilts to match). cols/rows stay editable
     afterward.
 
-  The coverage readout shows the overall framed area. To save the project, fill in
-  the **NINA profile** field (type an id, or pick one of the suggestions drawn
-  from your existing projects) and add at least one **Exposure plan** (the ＋
-  button adds a row: filter name, sub-exposure in seconds, and desired frame
-  count). The **Save to database** button enables once the project has a name, a
-  profile, a target, and an exposure plan; saving expands each mosaic into
+  The coverage readout shows the overall framed area. To save the project, add at
+  least one **Exposure plan** (the ＋ button adds a row). Each row is a required
+  **Select Exposure Template** dropdown — listing your existing Target Scheduler
+  templates, labelled like `name · filter · 900s · Gain: 56` — plus a desired
+  frame count. The filter and sub-exposure come from the chosen template, so there
+  is no free-text filter or manual exposure entry. (The NINA profile is seeded
+  automatically from your existing projects; there is no profile field to fill.)
+  The **Save to database** button enables once the project has a name, a target,
+  and an exposure plan with a template selected; saving expands each mosaic into
   per-pane targets and writes them to a staging database via `POST /api/export`.
   The saved project appears in the list and on the sky for the session — note it
   is **session-local and disappears on reload** (reads come from your source
@@ -170,6 +174,7 @@ All endpoints are under `/api`:
 | GET | `/targets` | Flat list of all targets (convenience for overlays). |
 | GET | `/schema` | Table names + row counts of the working copy. |
 | GET | `/surveys` | HiPS survey catalog offered by the sky view. |
+| GET | `/exposure-templates` | The user's existing Target Scheduler exposure templates (read-only), offered when building exposure plans. |
 | GET | `/equipment` | Equipment profiles (with computed FOV). |
 | POST | `/equipment` | Create a profile (server mints the id). |
 | PUT | `/equipment/{id}` | Update a profile. |
@@ -253,13 +258,15 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
   Target Scheduler DB you import into NINA, rather than writing into the database
   the app read from. Direct live writes exist in the backend but are gated behind
   `TS_ASSISTANT_ALLOW_LIVE_WRITE` and not exposed in the API or UI.
-- **No exposure-plan / template / rule-weight editing.** Exposure plans are shown
-  read-only (nested under targets); there is no UI to create or edit exposure
-  templates, assign plans, or tune rule weights yet.
-- **Target search is Aladin's, not a custom UI.** You resolve objects by name via
-  Aladin Lite's built-in search bar (plus click/center to position); there's no
-  TS-Assistant-specific search/resolver box integrated into the project builder
-  yet.
+- **Limited exposure-template / rule-weight editing.** When building a project you
+  can reference your existing Target Scheduler exposure templates in a plan
+  (`qiz.1`), but you cannot yet **create** new templates from the app (`qiz.5`,
+  next), build reusable app-side **exposure plan groups** (`759`), or tune rule
+  weights. Exposure plans on existing projects remain read-only.
+- **Target search is Aladin's, by design.** You resolve objects by name via Aladin
+  Lite's built-in Simbad search bar (plus the named-objects overlay and
+  click/center to position). A custom TS-Assistant search box was considered and
+  deliberately dropped (`qiz.4`) since Aladin already covers it.
 - **NSNS survey coverage.** All NSNS narrowband layers only cover Dec ≳ −20°;
   outside that band they render empty. Use DSS2/Mellinger for the southern sky.
 - **Equipment store is app-local and single-user.** Profiles live in
@@ -280,9 +287,12 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
   transactional additive writer with backup + undo (`mh3.2`), pre-write validation
   (`mh3.3`), the export API (`mh3.4`), and the create-Project-from-mosaic Save UI
   (`mh3.5`) are all merged. Save → staging export, end-to-end.
-- **P4 — Exposure plans, templates & polish** *(next)* — exposure plan/template
-  assignment UI, rule weights, target search/resolver, persisting created projects
-  across reloads (`2ij`), UX cleanup.
+- **P4 — Exposure plans, templates & polish** *(in progress)* — reference existing
+  exposure templates in a plan (`qiz.1`, done); still to come: create templates
+  (`qiz.5`), reusable app-side exposure plan groups (`759`), editing existing Draft
+  projects with a staging-vs-live write toggle (`o2c`, which also persists created
+  projects across reloads, resolving `2ij`), a top-level NINA profile selector
+  (`bg0`), rule weights, and UX cleanup.
 
 ---
 
