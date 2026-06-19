@@ -16,7 +16,7 @@
 import generated from "./skyObjects.generated.json";
 
 /** Which source catalog an object came from. */
-export type Catalog = "M" | "IC" | "Sh2" | "SNR" | "NGC";
+export type Catalog = "M" | "C" | "IC" | "Sh2" | "SNR" | "NGC";
 
 export interface SkyObject {
   /** Primary catalog id, e.g. "M31", "Sh2-155", "Cygnus Loop". */
