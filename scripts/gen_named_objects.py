@@ -53,20 +53,22 @@ IC_MIN = 10.0
 SH2_MIN = 30.0
 SNR_MIN = 20.0
 
-# Common names for the most famous Sharpless regions (nicer labels).
+# Common names for the most famous Sharpless regions (nicer labels). Each entry
+# is verified against SIMBAD's cross-identifications — Sh2 numbers do NOT line up
+# with nearby nicknames by intuition (e.g. the Pelican is IC 5070 / part of
+# Sh2-117, NOT Sh2-118, which is an anonymous HII region).
 SH2_NAMES = {
-    275: "Rosette Nebula",
-    117: "North America Nebula",
-    118: "Pelican Nebula",
-    190: "Heart Nebula",
-    199: "Soul Nebula",
-    220: "California Nebula",
-    125: "Cocoon Nebula",
-    155: "Cave Nebula",
-    142: "Wizard Nebula",
+    275: "Rosette Nebula",     # NAME Rosette Nebula
+    117: "North America Nebula",  # = NGC 7000
+    190: "Heart Nebula",       # = IC 1805
+    199: "Soul Nebula",         # = IC 1848
+    220: "California Nebula",    # = NGC 1499
+    125: "Cocoon Nebula",       # associated to IC 5146
+    155: "Cave Nebula",         # = Caldwell 9
+    142: "Wizard Nebula",       # NGC 7380 region
     101: "Tulip Nebula",
-    129: "Flying Bat Nebula",
-    240: "Spaghetti Nebula",
+    129: "Flying Bat Nebula",   # surrounds the Squid Nebula (Ou4)
+    240: "Spaghetti Nebula",    # optical Simeis 147 / SNR G180.0-1.7
 }
 
 # Famous NGC-only showpieces that aren't Messier/IC/Sh2/SNR — preserved so the
