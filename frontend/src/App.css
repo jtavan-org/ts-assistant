@@ -66,6 +66,9 @@
 .fov-toggle input {
   accent-color: #00e5ff;
 }
+.named-toggle input {
+  accent-color: #7dffb0;
+}
 .status {
   margin-left: auto;
   color: var(--text-dim);

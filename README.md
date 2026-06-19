@@ -24,6 +24,12 @@ the original database.
 - **Switch survey imagery.** DSS2 color (all-sky default), DSS2 NIR, Mellinger
   wide-field, and the full set of **NSNS DR0.2** narrowband composites
   (OHS, Hα, [OIII], [SII], RGB) plus the NSNS DR0.1 true-color layer.
+- **Label sky highlights.** An optional **Named objects** overlay labels and
+  circles several hundred well-known deep-sky objects (the Messier and Caldwell
+  catalogs, IC highlights, Sharpless HII regions, large supernova remnants, and a
+  few featured NGC showpieces) sized to their real angular extent. It's
+  zoom-aware — a wide field shows only the largest objects; zoom in to reveal
+  progressively smaller ones.
 - **Define equipment / field of view.** Create rig profiles (pixel size, sensor
   dimensions, focal length, corrector/reducer factor); the app computes plate
   scale and FOV and overlays the FOV box on the sky.
@@ -41,8 +47,8 @@ the original database.
   the HiPS survey catalog, and equipment profiles as JSON. The source database
   is never modified.
 - **frontend/** — Vite + React + TypeScript. Aladin Lite sky view, survey
-  switcher, equipment panel, project/mosaic builder, and a project/target
-  browser with click-to-center.
+  switcher, named-object overlay, equipment panel, project/mosaic builder, and a
+  project/target browser with click-to-center.
 
 ```
 Target Scheduler db  ──copy──▶  backend (FastAPI, read-only)
@@ -110,16 +116,27 @@ backend lives elsewhere.
 - **Survey** picker (top bar) switches the HiPS base layer. NSNS layers only
   cover Dec ≳ −20°, so DSS2 color is the all-sky default.
 - **FOV boxes** toggle (top bar) shows/hides the rig field-of-view overlay.
+- **Named objects** toggle (top bar, off by default) shows/hides the deep-sky
+  highlight overlay. Intended flow: toggle it on, then zoom to your region —
+  smaller objects appear as you zoom in.
 - **Equipment** panel (sidebar): pick or create a rig. Edits show a live plate
   scale + FOV readout and update the on-sky FOV box. Profiles persist via the
   backend (`data/equipment.json`).
 - **Project** panel (sidebar): start a new project draft (it begins with a single
   1×1 target at the view center), add more targets, and for each target set
   columns/rows (panes), overlap % (mosaics only), and rotation. Position a target
-  by using Aladin's built-in search bar to resolve an object by name, by
-  **Place / move on sky** then clicking/dragging on the sky, or **Center here** to
-  snap it to the current view center. The coverage readout shows the overall
-  framed area. *Saving a draft back to the database is not yet wired up.*
+  using either placement mode:
+  - **Place / move** — click/drag a center point (resolve an object by name first
+    with Aladin's built-in search bar, or use **Center here** to snap to the
+    current view center).
+  - **Cover area** — drag a box over the region you want imaged; the target's
+    panes auto-divide to **fully cover** that area at the current rig FOV and
+    overlap, adopting the dragged box's center, size, and orientation (if the
+    Aladin view is rotated, the grid tilts to match). cols/rows stay editable
+    afterward.
+
+  The coverage readout shows the overall framed area. *Saving a draft back to the
+  database is not yet wired up.*
 - **Projects** panel (sidebar): the read-only list of existing projects/targets
   from the database; click a target to center on it.
 
@@ -170,6 +187,27 @@ database built in `tests/make_fixture.py`) and the FOV/plate-scale computation.
 The frontend has no automated test suite yet; the `frontend/*.mjs` files are
 local Playwright verification scratch (gitignored).
 
+## Maintaining the named-object catalog
+
+The **Named objects** overlay is driven by a committed, bundled catalog
+(`frontend/src/sky/skyObjects.generated.json`) so it works offline and renders
+deterministically — **end users never need to regenerate it.**
+
+If you want to extend or refresh the catalog, regenerate it from authoritative
+sources:
+
+```bash
+python3 scripts/gen_named_objects.py    # stdlib only; needs outbound HTTPS
+```
+
+The generator pulls coordinates and angular sizes from **OpenNGC** (Messier /
+Caldwell / IC) and **VizieR/CDS** (`VII/20` Sharpless, `VII/284` Green supernova
+remnants) — nothing is hand-typed — and writes the JSON the frontend imports.
+Tunable knobs at the top of the script control what's included: the `IC_MIN` /
+`SH2_MIN` / `SNR_MIN` minimum-size thresholds, plus `MESSIER_EXTRA` and
+`FEATURED_NGC` for explicit additions. (Adjusting the thresholds changes the
+object count, so the catalog size is intentionally not pinned in these docs.)
+
 ## Known gaps & limitations
 
 These are the things that are **not** done or that may surprise you. Tracked in
@@ -179,8 +217,6 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
   or mosaic back to the Target Scheduler database. The "Save to database" button
   in the Project panel is intentionally disabled. The mosaic builder is a framing
   *preview* only; per-panel RA/Dec is computed but not persisted.
-- **No coverage-area mosaic.** Dragging a desired FOV rectangle and
-  auto-dividing it into rig-sized panels is planned but not implemented.
 - **No exposure-plan / template / rule-weight editing.** Exposure plans are shown
   read-only (nested under targets); there is no UI to create or edit exposure
   templates, assign plans, or tune rule weights yet.
@@ -203,8 +239,9 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
 
 - **Read-only sky overview** *(done)* — list projects/targets, project them on
   the sky dome, switch HiPS surveys.
-- **P2 — FOV & mosaic framing** *(largely done)* — equipment/FOV definition +
-  draw/position/rotate a mosaic grid. Remaining: coverage-area mosaic.
+- **P2 — FOV & mosaic framing** *(done)* — equipment/FOV definition +
+  draw/position/rotate a mosaic grid, plus coverage-area framing (drag a region →
+  auto-divide into rig-FOV panels).
 - **P3 — Write / export path** *(planned)* — create Project + panel Targets +
   ExposurePlans, gated by a schema round-trip test, with backup + validation +
   transactional write.

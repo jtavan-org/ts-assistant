@@ -43,6 +43,7 @@ export default function App() {
   const [focus, setFocus] = useState<SkyFocus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showFov, setShowFov] = useState(true);
+  const [showNamed, setShowNamed] = useState(false);
   const [fovSize, setFovSize] = useState<FovBox | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(null);
   const [placeMode, setPlaceMode] = useState<PlaceMode>(null);
@@ -211,6 +212,14 @@ export default function App() {
           />
           FOV boxes
         </label>
+        <label className="fov-toggle named-toggle">
+          <input
+            type="checkbox"
+            checked={showNamed}
+            onChange={(e) => setShowNamed(e.target.checked)}
+          />
+          Named objects
+        </label>
         <div className="status">
           {health?.db_present ? (
             <span>
@@ -261,6 +270,7 @@ export default function App() {
             focus={focus}
             fov={fovBox}
             draft={draftRender}
+            showNamedObjects={showNamed}
             placeMode={placeMode}
             onPlaceCenter={(ra, dec) =>
               patchTarget({ centerRa: ra, centerDec: dec })
