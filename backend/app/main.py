@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import equipment, projects, surveys
+from .api import equipment, export, projects, surveys
 from .config import find_source_db
 
 app = FastAPI(title="TS Assistant", version="0.1.0")
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(projects.router, prefix="/api")
 app.include_router(surveys.router, prefix="/api")
 app.include_router(equipment.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
 
 
 @app.get("/api/health")
