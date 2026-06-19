@@ -70,6 +70,21 @@ export interface ExposureTemplate {
   minutes_offset: number | null;
 }
 
+export interface PlanGroupItem {
+  exposure_template_id: number;
+  desired: number;
+}
+
+/** A named, reusable bundle of templates + counts (e.g. "LRGB Dark Nebula").
+ * App-local — no Target Scheduler table; expands into exposure plans on apply. */
+export interface PlanGroup {
+  id: string;
+  name: string;
+  items: PlanGroupItem[];
+}
+
+export type PlanGroupInput = Omit<PlanGroup, "id"> & { id?: string };
+
 export interface Health {
   status: string;
   db_present: boolean;
@@ -178,6 +193,13 @@ export const fetchSurveys = () => getJSON<Survey[]>("/surveys");
 export const fetchProjects = () => getJSON<Project[]>("/projects");
 export const fetchExposureTemplates = () =>
   getJSON<ExposureTemplate[]>("/exposure-templates");
+export const fetchPlanGroups = () => getJSON<PlanGroup[]>("/plan-groups");
+export const createPlanGroup = (g: PlanGroupInput) =>
+  sendJSON<PlanGroup>("/plan-groups", "POST", g);
+export const updatePlanGroup = (g: PlanGroup) =>
+  sendJSON<PlanGroup>(`/plan-groups/${g.id}`, "PUT", g);
+export const deletePlanGroup = (id: string) =>
+  sendJSON<{ ok: boolean }>(`/plan-groups/${id}`, "DELETE");
 export const fetchEquipment = () => getJSON<Equipment[]>("/equipment");
 export const createEquipment = (e: EquipmentInput) =>
   sendJSON<Equipment>("/equipment", "POST", e);

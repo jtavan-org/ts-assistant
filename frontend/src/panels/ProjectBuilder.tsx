@@ -1,4 +1,5 @@
-import type { ExposureTemplate } from "../api";
+import type { ExposureTemplate, PlanGroup } from "../api";
+import { templateLabel } from "../templateLabel";
 import type { FovBox, PlaceMode } from "../sky/AladinView";
 
 /** One target being framed: a single pointing (1×1) or a mosaic (N×M panes). */
@@ -41,6 +42,8 @@ interface Props {
   placeMode: PlaceMode;
   /** Existing exposure templates from the DB; one must be picked per plan. */
   templates: ExposureTemplate[];
+  /** Saved plan groups; applying one fills the exposure plans in a single pick. */
+  planGroups: PlanGroup[];
   saving: boolean;
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
@@ -55,16 +58,8 @@ interface Props {
   onAddPlan: () => void;
   onPatchPlan: (id: string, patch: Partial<ExposurePlanDraft>) => void;
   onRemovePlan: (id: string) => void;
+  onApplyPlanGroup: (groupId: string) => void;
   onSave: () => void;
-}
-
-/** Picker label, e.g. "S_900s · S · 900s · Gain: 56". Missing parts are dropped. */
-function templateLabel(t: ExposureTemplate): string {
-  const bits = [t.name];
-  if (t.filter_name) bits.push(t.filter_name);
-  if (t.default_exposure != null) bits.push(`${+t.default_exposure}s`);
-  if (t.gain != null && t.gain >= 0) bits.push(`Gain: ${t.gain}`);
-  return bits.join(" · ");
 }
 
 function raToHms(raDeg: number): string {
@@ -80,6 +75,7 @@ export default function ProjectBuilder({
   draft,
   placeMode,
   templates,
+  planGroups,
   saving,
   saveResult,
   onNewProject,
@@ -94,6 +90,7 @@ export default function ProjectBuilder({
   onAddPlan,
   onPatchPlan,
   onRemovePlan,
+  onApplyPlanGroup,
   onSave,
 }: Props) {
   const hasFov = !!fov && fov.widthDeg > 0 && fov.heightDeg > 0;
@@ -279,7 +276,7 @@ export default function ProjectBuilder({
                 )}
 
                 <label className="eq-field">
-                  Rotation {active.rotationDeg}°
+                  Rotation {Math.round(active.rotationDeg)}°
                   <input
                     type="range"
                     min={0}
@@ -308,6 +305,24 @@ export default function ProjectBuilder({
                 ＋
               </button>
             </div>
+            {planGroups.length > 0 && (
+              <select
+                className="plan-group-apply"
+                value=""
+                title="Apply a saved plan group — fills the plans below in one pick"
+                onChange={(e) => {
+                  if (e.target.value) onApplyPlanGroup(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="">Apply plan group…</option>
+                {planGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.items.length})
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="plan-list">
               {templates.length === 0 && (
                 <div className="eq-readout warn">

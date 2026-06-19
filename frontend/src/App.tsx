@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createExport,
+  createPlanGroup,
+  deletePlanGroup,
   fetchExposureTemplates,
   fetchHealth,
+  fetchPlanGroups,
   fetchProjects,
   fetchSurveys,
+  updatePlanGroup,
   type ExportTargetInput,
   type ExposureTemplate,
   type Health,
+  type PlanGroup,
+  type PlanGroupInput,
   type Project,
   type Survey,
   type Target,
@@ -22,6 +28,7 @@ import AladinView, {
 } from "./sky/AladinView";
 import ProjectList from "./panels/ProjectList";
 import EquipmentPanel from "./panels/EquipmentPanel";
+import PlanGroupsPanel from "./panels/PlanGroupsPanel";
 import ProjectBuilder, {
   type ProjectDraft,
   type TargetDraft,
@@ -43,6 +50,7 @@ export default function App() {
   const [surveyId, setSurveyId] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [templates, setTemplates] = useState<ExposureTemplate[]>([]);
+  const [planGroups, setPlanGroups] = useState<PlanGroup[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
   const [focus, setFocus] = useState<SkyFocus | null>(null);
@@ -71,6 +79,9 @@ export default function App() {
       .catch((e) => setError(String(e)));
     fetchExposureTemplates()
       .then(setTemplates)
+      .catch(() => {});
+    fetchPlanGroups()
+      .then(setPlanGroups)
       .catch(() => {});
   }, []);
 
@@ -245,6 +256,43 @@ export default function App() {
     setProjectDraft((d) =>
       d ? { ...d, exposurePlans: d.exposurePlans.filter((p) => p.id !== id) } : d,
     );
+  }
+
+  // Plan groups (qiz.6) — app-side named bundles of template+count.
+  async function createGroup(g: PlanGroupInput): Promise<PlanGroup> {
+    const res = await createPlanGroup(g);
+    setPlanGroups((prev) => [...prev, res]);
+    return res;
+  }
+  async function updateGroup(g: PlanGroup): Promise<PlanGroup> {
+    const res = await updatePlanGroup(g);
+    setPlanGroups((prev) => prev.map((x) => (x.id === res.id ? res : x)));
+    return res;
+  }
+  async function deleteGroup(id: string): Promise<void> {
+    await deletePlanGroup(id);
+    setPlanGroups((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  // Apply a group: replace the draft's exposure plans with the group's items,
+  // resolving each template for its filter/exposure display.
+  function applyPlanGroup(groupId: string) {
+    const g = planGroups.find((x) => x.id === groupId);
+    if (!g) return;
+    setProjectDraft((d) => {
+      if (!d) return d;
+      const plans = g.items.map((it) => {
+        const t = templates.find((x) => x.id === it.exposure_template_id);
+        return {
+          id: newTargetId(),
+          filterName: t?.filter_name ?? t?.name ?? "",
+          exposure: t?.default_exposure ?? 120,
+          desired: it.desired,
+          exposureTemplateId: it.exposure_template_id,
+        };
+      });
+      return { ...d, exposurePlans: plans };
+    });
   }
 
   // Expand every mosaic group into per-pane targets, attach the shared exposure
@@ -427,6 +475,7 @@ export default function App() {
             draft={projectDraft}
             placeMode={placeMode}
             templates={templates}
+            planGroups={planGroups}
             saving={saving}
             saveResult={saveResult}
             onNewProject={newProject}
@@ -449,7 +498,15 @@ export default function App() {
             onAddPlan={addPlan}
             onPatchPlan={patchPlan}
             onRemovePlan={removePlan}
+            onApplyPlanGroup={applyPlanGroup}
             onSave={saveProject}
+          />
+          <PlanGroupsPanel
+            templates={templates}
+            groups={planGroups}
+            onCreate={createGroup}
+            onUpdate={updateGroup}
+            onDelete={deleteGroup}
           />
           <ProjectList
             projects={projects}
