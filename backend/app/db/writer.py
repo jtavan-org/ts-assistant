@@ -68,6 +68,28 @@ class WriteResult(BaseModel):
     template_ids: dict[str, int]  # filter name -> exposuretemplate.Id
 
 
+# The columns each INSERT below populates — the writer's column contract, used by
+# the validator (mh3.3) to check the target schema is compatible. Keep in sync
+# with the INSERT statements in write_project/_ensure_template.
+WRITTEN_COLUMNS: dict[str, frozenset[str]] = {
+    "project": frozenset(
+        {"profileId", "name", "description", "state", "priority", "isMosaic", "guid"}
+    ),
+    "target": frozenset(
+        {"name", "active", "ra", "dec", "epochcode", "rotation", "roi", "projectid", "guid"}
+    ),
+    "exposuretemplate": frozenset(
+        {"profileId", "name", "filtername", "defaultexposure", "guid"}
+    ),
+    "exposureplan": frozenset(
+        {
+            "profileId", "exposure", "desired", "acquired", "accepted",
+            "targetid", "exposureTemplateId", "enabled", "guid",
+        }
+    ),
+}
+
+
 def _guid() -> str:
     return str(uuid.uuid4())
 

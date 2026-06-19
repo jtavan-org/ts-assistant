@@ -191,9 +191,9 @@ def export_project(
 
         conn.execute("BEGIN IMMEDIATE")  # take the write lock up front; busy -> fail fast
         ensure_provenance_table(conn)  # inside txn so a rollback removes it too
+        validate(conn, spec)  # pre-write schema/compat gate (mh3.3); clean error before INSERTs
         result = write_project(conn, spec)
         record_rows(conn, operation_id, _collect_prov(conn, result), now.isoformat())
-        validate(conn, spec)
         _assert_additive(conn, counts_before, max_before, result)
         fk = conn.execute("PRAGMA foreign_key_check").fetchall()
         if fk:

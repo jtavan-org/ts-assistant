@@ -289,6 +289,21 @@ def test_live_write_guard(tmp_path, monkeypatch):
     assert res.project_id > 0
 
 
+def test_incompatible_schema_rejected_and_rolled_back(tmp_path):
+    from app.db.validate import ValidationError
+
+    db = _baseline(tmp_path / "t.sqlite")
+    conn = sqlite3.connect(db)
+    conn.execute("ALTER TABLE target DROP COLUMN guid")  # incompatible: writer fills guid
+    conn.commit()
+    conn.close()
+    before = _sha(db)
+
+    with pytest.raises(ValidationError):
+        export_project(_new_project(), target_db=db, now=T0)
+    assert _sha(db) == before  # pre-write gate -> nothing inserted, byte-identical
+
+
 def test_busy_db_fails_fast(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
     holder = sqlite3.connect(db, isolation_level=None)
