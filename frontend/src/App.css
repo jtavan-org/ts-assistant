@@ -435,9 +435,14 @@
   padding: 4px 0;
 }
 .eq-check {
-  flex-direction: row;
-  align-items: center;
+  /* Label text on the left like every other field; checkbox right after it
+     (override .eq-field's space-between so the checkbox doesn't float to an edge). */
+  justify-content: flex-start;
   gap: 6px;
+}
+.eq-check input {
+  width: auto;
+  flex: 0 0 auto;
 }
 .modal-actions {
   display: flex;

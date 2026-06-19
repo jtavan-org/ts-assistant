@@ -168,12 +168,12 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
               <input value={f.twilightLevel} onChange={(e) => set({ twilightLevel: e.target.value })} />
             </label>
             <label className="eq-field eq-check">
+              Moon avoidance
               <input
                 type="checkbox"
                 checked={f.moonAvoidanceEnabled}
                 onChange={(e) => set({ moonAvoidanceEnabled: e.target.checked })}
               />
-              Moon avoidance
             </label>
             <label className="eq-field">
               Moon sep (°)
