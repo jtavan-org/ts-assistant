@@ -213,10 +213,16 @@ object count, so the catalog size is intentionally not pinned in these docs.)
 These are the things that are **not** done or that may surprise you. Tracked in
 more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`).
 
-- **No write / export path (P3).** You cannot yet save a drafted project, target,
-  or mosaic back to the Target Scheduler database. The "Save to database" button
-  in the Project panel is intentionally disabled. The mosaic builder is a framing
-  *preview* only; per-panel RA/Dec is computed but not persisted.
+- **No user-facing write / export path yet (P3).** You cannot save a drafted
+  project, target, or mosaic back to the Target Scheduler database from the UI:
+  the "Save to database" button is intentionally disabled and the mosaic builder
+  is a framing *preview* only (per-panel RA/Dec is computed but not persisted).
+  Backend groundwork has landed — a faithful writer *seed* (`app/db/writer.py`)
+  plus a passing schema round-trip fidelity test (`tests/test_roundtrip.py`, bead
+  `mh3.1`) that proves a written database is schema-identical to a NINA-written
+  one and reads back losslessly — but the transactional writer/exporter,
+  validation, automatic backup, and the export API + create-from-mosaic UI are
+  still to come.
 - **No exposure-plan / template / rule-weight editing.** Exposure plans are shown
   read-only (nested under targets); there is no UI to create or edit exposure
   templates, assign plans, or tune rule weights yet.
@@ -232,8 +238,6 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
 - **Working copy refreshes every request.** Each API read re-copies the source
   database into `data/working/`. This is fine for typical scheduler DBs but is
   unoptimized for very large databases.
-- **Schema round-trip fidelity test (gating P3) not yet written**, so the write
-  path is blocked until the DB schema can be safely reproduced.
 
 ## Roadmap
 
@@ -242,9 +246,10 @@ more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`)
 - **P2 — FOV & mosaic framing** *(done)* — equipment/FOV definition +
   draw/position/rotate a mosaic grid, plus coverage-area framing (drag a region →
   auto-divide into rig-FOV panels).
-- **P3 — Write / export path** *(planned)* — create Project + panel Targets +
-  ExposurePlans, gated by a schema round-trip test, with backup + validation +
-  transactional write.
+- **P3 — Write / export path** *(in progress)* — the schema round-trip fidelity
+  gating test (`mh3.1`) and a faithful writer seed have landed; remaining: the
+  transactional writer/exporter, validation, automatic backup, the export API, and
+  the create-Project-from-mosaic UI.
 - **P4 — Exposure plans, templates & polish** *(planned)* — exposure
   plan/template assignment UI, rule weights, target search/resolver, UX cleanup.
 
