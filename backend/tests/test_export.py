@@ -277,6 +277,26 @@ def test_create_exposure_template_additive(tmp_path):
     conn.close()
 
 
+def test_create_exposure_template_default_sentinels(tmp_path):
+    """A minimal create (name + filter only) stores NINA's -1 'use default'
+    sentinel for gain/offset/readoutmode/ditherevery — matching real TS rows."""
+    db = _baseline(tmp_path / "t.sqlite")
+    res = create_exposure_template(
+        ExposureTemplateSpec(profile_id=PROFILE, name="L default", filter_name="L"),
+        target_db=db,
+        now=T0,
+    )
+    conn = sqlite3.connect(db)
+    row = _rows(conn, "exposuretemplate")[res.template_id]
+    conn.close()
+    assert row["gain"] == -1
+    assert row["offset"] == -1
+    assert row["readoutmode"] == -1
+    assert row["ditherevery"] == -1
+    assert row["bin"] == 1
+    assert row["defaultexposure"] == pytest.approx(60.0)
+
+
 def test_create_exposure_template_rejects_blank(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
     before = _sha(db)

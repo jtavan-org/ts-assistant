@@ -22,7 +22,7 @@ const INITIAL = {
   moonAvoidanceSeparation: "0",
   moonAvoidanceWidth: "0",
   maximumHumidity: "",
-  ditherEvery: "-1",
+  ditherEvery: "",
   minutesOffset: "0",
   moonRelaxScale: "0",
   moonRelaxMaxAltitude: "5",
@@ -30,10 +30,15 @@ const INITIAL = {
   moonDownEnabled: false,
 };
 
-const intOrNull = (s: string) => (s.trim() === "" ? null : Math.round(Number(s)));
 const numOrNull = (s: string) => (s.trim() === "" ? null : Number(s));
 const intOr = (s: string, d: number) => (s.trim() === "" ? d : Math.round(Number(s)));
 const numOr = (s: string, d: number) => (s.trim() === "" ? d : Number(s));
+// NINA's "use the default" sentinel is -1 (camera default for gain/offset/readout,
+// project default for dither). We show those blank and store them as -1.
+const DEFAULT_SENTINEL = -1;
+// A stored value is "default" when it's null or the -1 sentinel -> show blank.
+const fromSentinel = (v: number | null | undefined) =>
+  v == null || v < 0 ? "" : String(v);
 
 /** Lightweight modal to create one exposure template (qiz.5). Essentials are
  * always visible; the rest live under a collapsed "Advanced" with NINA defaults. */
@@ -54,18 +59,19 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
     set({
       name: t.name ? `${t.name} copy` : "",
       filterName: t.filter_name ?? "",
-      gain: t.gain != null ? String(t.gain) : "",
-      offset: t.offset != null ? String(t.offset) : "",
+      // gain/offset/readout/dither: -1 (or null) means "use default" -> show blank
+      gain: fromSentinel(t.gain),
+      offset: fromSentinel(t.offset),
       binning: t.binning != null ? String(t.binning) : "1",
       defaultExposure: t.default_exposure != null ? String(t.default_exposure) : "60",
-      readoutMode: t.readout_mode != null ? String(t.readout_mode) : "",
+      readoutMode: fromSentinel(t.readout_mode),
       twilightLevel: t.twilight_level != null ? String(t.twilight_level) : "0",
       moonAvoidanceEnabled: !!t.moon_avoidance_enabled,
       moonAvoidanceSeparation:
         t.moon_avoidance_separation != null ? String(t.moon_avoidance_separation) : "0",
       moonAvoidanceWidth: t.moon_avoidance_width != null ? String(t.moon_avoidance_width) : "0",
       maximumHumidity: t.maximum_humidity != null ? String(t.maximum_humidity) : "",
-      ditherEvery: t.dither_every != null ? String(t.dither_every) : "-1",
+      ditherEvery: fromSentinel(t.dither_every),
       minutesOffset: t.minutes_offset != null ? String(t.minutes_offset) : "0",
     });
   }
@@ -78,10 +84,10 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
       profile_id: profileId,
       name: f.name.trim(),
       filter_name: f.filterName.trim(),
-      gain: intOrNull(f.gain),
-      offset: intOrNull(f.offset),
+      gain: intOr(f.gain, DEFAULT_SENTINEL),
+      offset: intOr(f.offset, DEFAULT_SENTINEL),
       binning: intOr(f.binning, 1),
-      readout_mode: intOrNull(f.readoutMode),
+      readout_mode: intOr(f.readoutMode, DEFAULT_SENTINEL),
       twilight_level: intOr(f.twilightLevel, 0),
       moon_avoidance_enabled: f.moonAvoidanceEnabled,
       moon_avoidance_separation: numOr(f.moonAvoidanceSeparation, 0),
@@ -134,11 +140,11 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
           </label>
           <label className="eq-field">
             Gain
-            <input value={f.gain} placeholder="(camera)" onChange={(e) => set({ gain: e.target.value })} />
+            <input value={f.gain} placeholder="(camera default)" onChange={(e) => set({ gain: e.target.value })} />
           </label>
           <label className="eq-field">
             Offset
-            <input value={f.offset} placeholder="(camera)" onChange={(e) => set({ offset: e.target.value })} />
+            <input value={f.offset} placeholder="(camera default)" onChange={(e) => set({ offset: e.target.value })} />
           </label>
           <label className="eq-field">
             Binning
@@ -186,7 +192,11 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
             </label>
             <label className="eq-field">
               Dither every
-              <input value={f.ditherEvery} onChange={(e) => set({ ditherEvery: e.target.value })} />
+              <input
+                value={f.ditherEvery}
+                placeholder="(project default)"
+                onChange={(e) => set({ ditherEvery: e.target.value })}
+              />
             </label>
             <label className="eq-field">
               Minutes offset

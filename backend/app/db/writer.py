@@ -80,10 +80,12 @@ class ExposureTemplateSpec(BaseModel):
     profile_id: str
     name: str
     filter_name: str
-    gain: int | None = None
-    offset: int | None = None
+    # -1 is NINA's "use the default" sentinel (camera default for gain/offset/readout,
+    # project default for dither) — matches what Target Scheduler itself stores.
+    gain: int | None = -1
+    offset: int | None = -1
     binning: int | None = 1
-    readout_mode: int | None = None
+    readout_mode: int | None = -1
     twilight_level: int = 0
     moon_avoidance_enabled: bool = False
     moon_avoidance_separation: float = 0.0
