@@ -674,42 +674,6 @@ export default function App() {
       <div className="body">
         <aside className="sidebar">
           <EquipmentPanel profileId={activeProfileId} onFovChange={setFovSize} />
-          <ProjectBuilder
-            fov={fovSize}
-            draft={projectDraft}
-            placeMode={placeMode}
-            templates={visibleTemplates}
-            planTemplates={planTemplates}
-            saving={saving}
-            editing={editingProjectId != null}
-            saveResult={saveResult}
-            onNewProject={newProject}
-            onDiscard={() => {
-              setProjectDraft(null);
-              setEditingProjectId(null);
-              setPlaceMode(null);
-              setSaveResult(null);
-            }}
-            onRenameProject={(name) =>
-              setProjectDraft((d) => (d ? { ...d, name } : d))
-            }
-            onAddTarget={addTarget}
-            onSelectTarget={(id) =>
-              setProjectDraft((d) => (d ? { ...d, activeTargetId: id } : d))
-            }
-            onRemoveTarget={removeTarget}
-            onPatchTarget={patchTarget}
-            onSetMode={setPlaceMode}
-            onCenterCurrent={centerTargetHere}
-            onAddPlan={addPlan}
-            onPatchPlan={patchPlan}
-            onRemovePlan={removePlan}
-            onApplyPlanTemplate={applyPlanTemplate}
-            onRequestNewTemplate={requestNewTemplate}
-            ruleWeightDefaults={ruleWeightDefaults}
-            onPatchRuleWeights={patchRuleWeights}
-            onSave={saveProject}
-          />
           <PlanTemplatesPanel
             templates={visibleTemplates}
             planTemplates={planTemplates}
@@ -723,6 +687,44 @@ export default function App() {
             selectedTargetId={selectedTargetId}
             onSelectTarget={selectTarget}
             onEditProject={editProject}
+            builder={
+              <ProjectBuilder
+                fov={fovSize}
+                draft={projectDraft}
+                placeMode={placeMode}
+                templates={visibleTemplates}
+                planTemplates={planTemplates}
+                saving={saving}
+                editing={editingProjectId != null}
+                saveResult={saveResult}
+                onNewProject={newProject}
+                onDiscard={() => {
+                  setProjectDraft(null);
+                  setEditingProjectId(null);
+                  setPlaceMode(null);
+                  setSaveResult(null);
+                }}
+                onRenameProject={(name) =>
+                  setProjectDraft((d) => (d ? { ...d, name } : d))
+                }
+                onAddTarget={addTarget}
+                onSelectTarget={(id) =>
+                  setProjectDraft((d) => (d ? { ...d, activeTargetId: id } : d))
+                }
+                onRemoveTarget={removeTarget}
+                onPatchTarget={patchTarget}
+                onSetMode={setPlaceMode}
+                onCenterCurrent={centerTargetHere}
+                onAddPlan={addPlan}
+                onPatchPlan={patchPlan}
+                onRemovePlan={removePlan}
+                onApplyPlanTemplate={applyPlanTemplate}
+                onRequestNewTemplate={requestNewTemplate}
+                ruleWeightDefaults={ruleWeightDefaults}
+                onPatchRuleWeights={patchRuleWeights}
+                onSave={saveProject}
+              />
+            }
           />
         </aside>
         <main className="sky">

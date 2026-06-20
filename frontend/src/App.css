@@ -448,21 +448,15 @@
 }
 
 /* Project builder (mirrors the equipment panel) */
+/* Project builder: rendered inside the Projects panel (no accordion of its own). */
 .project-builder {
   border-bottom: 1px solid var(--border);
-  background: var(--panel-2);
 }
-.project-builder > summary {
+.pb-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-}
-.project-builder > summary::-webkit-details-marker {
-  display: none;
+  padding: 8px 12px 0;
 }
 .project-builder .eq-fov {
   color: #ffb300;

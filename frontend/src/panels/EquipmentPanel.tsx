@@ -136,7 +136,7 @@ export default function EquipmentPanel({ profileId, onFovChange }: Props) {
     : null;
 
   return (
-    <details className="equipment" open>
+    <details className="equipment">
       <summary>
         <span className="eq-title">Equipment</span>
         {fov && (

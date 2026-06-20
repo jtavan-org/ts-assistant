@@ -132,16 +132,17 @@ export default function ProjectBuilder({
   }
 
   return (
-    <details className="project-builder" open>
-      <summary>
-        <span className="eq-title">Project</span>
-        {draft && editing && <span className="rw-edited">editing</span>}
-        {draft && (
+    // Rendered inside the "Projects" panel (no accordion of its own): the New-project
+    // button when idle, or the builder form when a draft is active.
+    <div className="project-builder">
+      {draft && (
+        <div className="pb-head">
+          <span className="eq-title">{editing ? "Editing project" : "New project"}</span>
           <span className="eq-fov">
             {draft.targets.length} target{draft.targets.length === 1 ? "" : "s"}
           </span>
-        )}
-      </summary>
+        </div>
+      )}
 
       <div className="eq-body">
         {!hasFov && (
@@ -443,6 +444,6 @@ export default function ProjectBuilder({
           </>
         )}
       </div>
-    </details>
+    </div>
   );
 }
