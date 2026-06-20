@@ -8,13 +8,27 @@ import {
   useRef,
 } from "react";
 import A from "aladin-lite";
-import type { Survey, Target } from "../api";
+import type { ExposurePlan, Survey, Target } from "../api";
 import { fovCorners, fovTopTriangle, type MosaicPanel } from "./fov";
 import { NAMED_OBJECTS, objectLabel } from "./skyObjects";
 
 // A named object is drawn only when its angular size is at least this fraction
 // of the current field-of-view width — the zoom-aware declutter for the overlay.
 const MIN_FOV_FRACTION = 0.02;
+
+/** Per-filter acquisition breakdown for a target's popup (snd): one line per
+ * exposure plan — filter and desired/acquired/accepted, with frames still to go. */
+function planBreakdownHtml(plans: ExposurePlan[]): string {
+  if (!plans.length) return "";
+  const lines = plans.map((p) => {
+    const pending = Math.max(0, p.desired - p.accepted);
+    return (
+      `&nbsp;&nbsp;${p.filter_name ?? "?"}: ${p.desired}/${p.acquired}/${p.accepted}` +
+      (pending ? ` · ${pending} to go` : " · done")
+    );
+  });
+  return "<br/>filters (desired/acquired/accepted):<br/>" + lines.join("<br/>");
+}
 
 export interface SkyFocus {
   ra: number;
@@ -290,11 +304,7 @@ function AladinView(
             `${t.project_name} · ${t.active ? "active" : "inactive"}<br/>` +
             `RA ${t.ra_deg.toFixed(4)}°, Dec ${t.dec_deg.toFixed(4)}°<br/>` +
             `rotation ${t.rotation.toFixed(1)}°` +
-            (t.exposure_plans.length
-              ? `<br/>filters: ${t.exposure_plans
-                  .map((p) => p.filter_name ?? "?")
-                  .join(", ")}`
-              : ""),
+            planBreakdownHtml(t.exposure_plans),
           id: t.id,
         }),
       ),

@@ -554,6 +554,25 @@
 }
 
 /* Project list */
+/* Projects panel — collapsible header above the project list (matches the other
+   sidebar panels' header chrome; the list body stays on the sidebar background so
+   the existing row-hover highlight remains visible). */
+.projects-panel {
+  border-bottom: 1px solid var(--border);
+}
+.projects-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  background: var(--panel-2);
+}
+.projects-panel > summary::-webkit-details-marker {
+  display: none;
+}
 .panel-empty {
   padding: 24px 16px;
   color: var(--text-dim);
@@ -659,4 +678,15 @@
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 11px;
+}
+/* Acquisition completion (snd): accepted/desired, green once the goal is met. */
+.target-prog,
+.proj-prog {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.target-prog.complete,
+.proj-prog.complete {
+  color: #4ade80;
 }
