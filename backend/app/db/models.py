@@ -25,6 +25,15 @@ class ExposurePlan(BaseModel):
     exposure_template_id: int | None = None
 
 
+class OverrideStep(BaseModel):
+    """One step of a target's override exposure order (awh). action 0 = expose the plan
+    at reference_idx; action 1 = a Dither step (reference_idx = -1)."""
+
+    order: int
+    action: int
+    reference_idx: int
+
+
 class Target(BaseModel):
     id: int
     name: str
@@ -37,6 +46,7 @@ class Target(BaseModel):
     project_id: int
     project_name: str
     exposure_plans: list[ExposurePlan] = []
+    override_exposure_order: list[OverrideStep] = []
 
 
 class RuleWeight(BaseModel):

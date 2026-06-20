@@ -16,6 +16,7 @@ from .models import (
     PROJECT_STATE,
     ExposurePlan,
     ExposureTemplate,
+    OverrideStep,
     Project,
     RuleWeight,
     SchemaInfo,
@@ -92,6 +93,7 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
     t_plan = _find_table(tables, "exposureplan", "exposure_plan")
     t_template = _find_table(tables, "exposuretemplate", "exposure_template")
     t_ruleweight = _find_table(tables, "ruleweight", "rule_weight")
+    t_oeo = _find_table(tables, "overrideexposureorderitem")
     if not t_project or not t_target:
         return []
 
@@ -107,6 +109,27 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
                 continue
             weights_by_project.setdefault(int(pid), []).append(
                 RuleWeight(name=str(name), weight=float(_row_get(r, "weight", default=0.0) or 0.0))
+            )
+
+    # Override exposure order grouped by target (awh), ordered by the row's `order`.
+    oeo_by_target: dict[int, list[OverrideStep]] = {}
+    if t_oeo:
+        rows = []
+        for r in conn.execute(f'SELECT * FROM "{t_oeo}"'):
+            tid = _row_get(r, "targetid", "targetId")
+            if tid is None:
+                continue
+            rows.append(
+                (
+                    int(tid),
+                    int(_row_get(r, "order", default=0) or 0),
+                    int(_row_get(r, "action", default=0) or 0),
+                    int(_row_get(r, "referenceIdx", "referenceidx", default=-1)),
+                )
+            )
+        for tid, order, action, ref in sorted(rows, key=lambda x: (x[0], x[1])):
+            oeo_by_target.setdefault(tid, []).append(
+                OverrideStep(order=order, action=action, reference_idx=ref)
             )
 
     # Exposure plans grouped by target id.
@@ -183,6 +206,7 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
                 project_id=proj.id,
                 project_name=proj.name,
                 exposure_plans=plans_by_target.get(tid, []),
+                override_exposure_order=oeo_by_target.get(tid, []),
             )
         )
 

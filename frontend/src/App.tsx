@@ -20,6 +20,7 @@ import {
   type ExposureTemplateInput,
   type Health,
   PROJECT_SETTING_DEFAULTS,
+  type OverrideStep,
   type PlanTemplate,
   type PlanTemplateInput,
   type ProfileInfo,
@@ -252,6 +253,7 @@ export default function App() {
       profileId: activeProfileId,
       ruleWeights: ruleWeightDefaults.map((w) => ({ ...w })),
       settings: { ...PROJECT_SETTING_DEFAULTS },
+      overrideOrder: [],
       targets: [t],
       activeTargetId: t.id,
       exposurePlans: [
@@ -315,6 +317,10 @@ export default function App() {
           ? project.rule_weights.map((w) => ({ ...w }))
           : ruleWeightDefaults.map((w) => ({ ...w })),
       settings,
+      overrideOrder: (project.targets[0]?.override_exposure_order ?? []).map((s) => ({
+        action: s.action,
+        reference_idx: s.reference_idx,
+      })),
       targets,
       activeTargetId: targets[0]?.id ?? null,
       exposurePlans,
@@ -447,6 +453,10 @@ export default function App() {
     setProjectDraft((d) => (d ? { ...d, settings } : d));
   }
 
+  function patchOverrideOrder(overrideOrder: OverrideStep[]) {
+    setProjectDraft((d) => (d ? { ...d, overrideOrder } : d));
+  }
+
   // Exposure plan templates (qiz.6) — app-side named bundles of template+count.
   async function onCreatePlanTemplate(g: PlanTemplateInput): Promise<PlanTemplate> {
     // Stamp the active profile so it's only listed under that profile.
@@ -576,6 +586,9 @@ export default function App() {
         targets: apiTargets,
         ...draft.settings, // advanced project settings (psq)
         ...ruleWeightsBody,
+        ...(draft.overrideOrder.length
+          ? { override_exposure_order: draft.overrideOrder }
+          : {}),
       };
       const res = isEdit
         ? await updateExport(editingProjectId, req)
@@ -612,6 +625,7 @@ export default function App() {
             accepted: 0,
             exposure_template_id: p.exposure_template_id ?? null,
           })),
+          override_exposure_order: draft.overrideOrder.map((s) => ({ ...s })),
         })),
         rule_weights: draft.ruleWeights.map((w) => ({ ...w })),
       };
@@ -777,6 +791,7 @@ export default function App() {
                 ruleWeightDefaults={ruleWeightDefaults}
                 onPatchRuleWeights={patchRuleWeights}
                 onPatchSettings={patchSettings}
+                onPatchOverrideOrder={patchOverrideOrder}
                 onSave={saveProject}
               />
             }

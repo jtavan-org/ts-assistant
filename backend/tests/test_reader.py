@@ -97,6 +97,14 @@ def test_loads_project_settings(reader):
     assert m31.minimum_altitude == 0.0
 
 
+def test_loads_override_exposure_order(reader):
+    targets = {t.name: t for t in reader.load_targets()}
+    steps = targets["M31"].override_exposure_order
+    assert [(s.order, s.action, s.reference_idx) for s in steps] == [(1, 0, 0), (2, 1, -1)]
+    # targets without an override order come back empty
+    assert targets["Panel 1-1"].override_exposure_order == []
+
+
 def test_schema_info(reader):
     info = reader.schema_info()
     assert info.db_present is True
