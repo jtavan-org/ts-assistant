@@ -47,12 +47,22 @@ def backup_keep_days() -> int:
     return _env_int("TS_ASSISTANT_BACKUP_KEEP_DAYS", 14)
 
 
+# Canonical NINA Target Scheduler database filenames, tried before any glob.
+_CANONICAL_DB_NAMES = ("schedulerdb.sqlite", "schedulerdb.sqlite3", "schedulerdb.db")
+
+
 def find_source_db() -> Path | None:
     """Locate the source Target Scheduler database.
 
     Priority:
       1. ``TS_ASSISTANT_DB`` env var (explicit file path).
-      2. First matching SQLite file in ``sample_database/``.
+      2. The canonical ``schedulerdb.sqlite`` (or .sqlite3/.db) in ``sample_database/``.
+      3. First non-backup SQLite file in ``sample_database/``.
+
+    A real Target Scheduler folder holds ``schedulerdb.sqlite`` alongside NINA's own
+    dated backups (e.g. ``schedulerdb-2026-06-16-21-23-06-backup.sqlite``). A naive
+    ``sorted(glob(...))[0]`` would pick a backup, since ``-`` sorts before ``.`` — so we
+    prefer the canonical name and skip anything that looks like a backup.
 
     Returns ``None`` when no database is available yet (e.g. before the user has
     copied one in) so the API can degrade gracefully instead of crashing.
@@ -64,8 +74,16 @@ def find_source_db() -> Path | None:
 
     if not SAMPLE_DB_DIR.is_dir():
         return None
+
+    for name in _CANONICAL_DB_NAMES:
+        p = SAMPLE_DB_DIR / name
+        if p.is_file():
+            return p
+
     for pattern in _DB_GLOBS:
-        matches = sorted(SAMPLE_DB_DIR.glob(pattern))
+        matches = sorted(
+            m for m in SAMPLE_DB_DIR.glob(pattern) if "backup" not in m.name.lower()
+        )
         if matches:
             return matches[0]
     return None

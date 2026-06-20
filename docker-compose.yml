@@ -21,20 +21,16 @@ services:
     ports:
       - "${TS_BACKEND_PORT:-8008}:8008"
     environment:
-      # Operating mode is fixed at launch (o2c): STAGING (safe, default) writes a
-      # separate staging copy; LIVE reads AND writes your real DB. There is no
-      # in-app switch — set this deliberately here.
-      TS_ASSISTANT_ALLOW_LIVE_WRITE: "${TS_ASSISTANT_ALLOW_LIVE_WRITE:-0}"
-      # Gzip the pre-write backups (recommended in LIVE — each is ~the DB's size).
+      # Gzip the pre-write backups (each is roughly the size of your whole DB).
       TS_ASSISTANT_BACKUP_GZIP: "${TS_ASSISTANT_BACKUP_GZIP:-0}"
     volumes:
-      # The folder holding your Target Scheduler DB. Mounted read-write so LIVE mode
-      # can write the DB plus its SQLite -wal/-shm sidecars; STAGING never writes it.
-      # Mounting the *directory* (not the file) is required for those sidecars.
-      # Append ":ro" for belt-and-suspenders read-only in STAGING.
+      # The folder holding your Target Scheduler DB. The app operates in place: it reads
+      # AND writes this database, taking a backup before every write. Mounted read-write
+      # so it can write the DB plus its SQLite -wal/-shm sidecars; mounting the
+      # *directory* (not the file) is required for those sidecars.
       - "${TS_DB_DIR:-./sample_database}:/app/sample_database"
-      # Working copies, the staging DB, and timestamped pre-write backups. Kept as a
-      # host bind so backups are easy to grab if you ever need to restore (./data/backups).
+      # Timestamped pre-write backups, kept as a host bind so they're easy to grab if you
+      # ever need to restore (./data/backups).
       - ./data:/app/data
     restart: unless-stopped
 

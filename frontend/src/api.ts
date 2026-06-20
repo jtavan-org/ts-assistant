@@ -6,7 +6,11 @@
 // Override with VITE_API_BASE if the backend lives elsewhere.
 const defaultApiBase = `http://${window.location.hostname}:8008/api`;
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? defaultApiBase;
+// `||` (not `??`) on purpose: the Docker build bakes ENV VITE_API_BASE=$VITE_API_BASE,
+// which is an empty string when no build-arg is given. `?? ` would keep "" and collapse
+// every request to a same-origin relative path (served the SPA index.html → JSON.parse
+// errors). Treat "" as unset and fall back to the runtime default.
+export const API_BASE = import.meta.env.VITE_API_BASE || defaultApiBase;
 
 export interface Survey {
   id: string;
