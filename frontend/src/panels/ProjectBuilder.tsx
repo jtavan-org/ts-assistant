@@ -442,16 +442,18 @@ export default function ProjectBuilder({
                   ? "Save changes"
                   : "Save to database"}
             </button>
-            {editing && (
-              <button
-                className="eq-discard"
-                onClick={onDiscard}
-                disabled={saving}
-                title="Stop editing without saving your changes"
-              >
-                Discard changes
-              </button>
-            )}
+            <button
+              className="eq-discard"
+              onClick={onDiscard}
+              disabled={saving}
+              title={
+                editing
+                  ? "Stop editing without saving your changes"
+                  : "Discard this new project"
+              }
+            >
+              Discard changes
+            </button>
             {saveResult && (
               <div className={saveResult.ok ? "eq-readout save-ok" : "eq-readout warn"}>
                 {saveResult.message}
