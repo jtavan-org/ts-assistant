@@ -163,8 +163,19 @@ def _seed_export_db() -> Path:
 
 
 def _resolve_target(target_db: str | Path | None) -> Path:
+    # Default target depends on the operating mode (o2c / bead j9t): LIVE writes the
+    # user's real DB directly; STAGING writes a safe copy. Mode is fixed at launch.
     if target_db is None:
-        return _seed_export_db()
+        if allow_live_write():
+            source = find_source_db()
+            if source is None:
+                raise ExportError(
+                    "Live mode is enabled (TS_ASSISTANT_ALLOW_LIVE_WRITE=1) but no "
+                    "Target Scheduler database was found — set TS_ASSISTANT_DB or drop "
+                    "one into sample_database/."
+                )
+            return source  # read target == write target == the real DB
+        return _seed_export_db()  # safe staging copy
     target = Path(target_db)
     source = find_source_db()
     if source is not None and target.resolve() == source.resolve() and not allow_live_write():
@@ -175,10 +186,22 @@ def _resolve_target(target_db: str | Path | None) -> Path:
     return target
 
 
+def _is_live_target(target: Path) -> bool:
+    """True when ``target`` is the user's real source DB (vs a staging copy).
+
+    Live writes get the stronger safety treatment: back up before *every* write
+    (window 0) with a WAL-consistent copy, and verify integrity before touching it.
+    """
+    source = find_source_db()
+    return source is not None and Path(target).resolve() == source.resolve()
+
+
 def _busy_or_export_error(e: sqlite3.OperationalError) -> ExportError:
     msg = str(e).lower()
     if "lock" in msg or "busy" in msg:
-        return DatabaseBusyError("target database is busy (is NINA / Target Scheduler open?)")
+        return DatabaseBusyError(
+            "Target Scheduler database is busy — pause NINA's scheduler or close it, then retry."
+        )
     return ExportError(str(e))
 
 
@@ -195,14 +218,22 @@ def export_project(
     now = now or datetime.now(timezone.utc)
     validate = validate or default_validate
     target = _resolve_target(target_db)
+    live = _is_live_target(target)
+    window = 0 if live else backup_window_min  # live: back up before every write
 
-    backup = ensure_backup(target, window_min=backup_window_min, now=now)
+    backup = ensure_backup(target, window_min=window, now=now, live=live)
     operation_id = "op_" + uuid.uuid4().hex
 
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row  # introspect()/validate look up columns by name
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # no-op inside a txn, so set first
+        # Verify integrity BEFORE taking the write lock, so a scan on a large live DB
+        # never blocks NINA mid-capture (live always; staging when env-enabled).
+        if live or integrity_check_enabled():
+            chk = conn.execute("PRAGMA quick_check").fetchone()[0]
+            if chk != "ok":
+                raise ExportError(f"quick_check failed before write: {chk}")
         counts_before = _counts(conn)
         max_before = _max_ids(conn)
 
@@ -215,10 +246,6 @@ def export_project(
         fk = conn.execute("PRAGMA foreign_key_check").fetchall()
         if fk:
             raise ExportError(f"foreign key violations: {fk[:5]}")
-        if integrity_check_enabled():
-            status = conn.execute("PRAGMA integrity_check").fetchone()[0]
-            if status != "ok":
-                raise ExportError(f"integrity_check failed: {status}")
         conn.commit()
         project_guid = _guid(conn, "project", result.project_id)
     except sqlite3.OperationalError as e:
@@ -275,14 +302,20 @@ def create_exposure_template(
     now = now or datetime.now(timezone.utc)
     validate = validate or validate_exposure_template
     target = _resolve_target(target_db)
+    live = _is_live_target(target)
+    window = 0 if live else backup_window_min  # live: back up before every write
 
-    backup = ensure_backup(target, window_min=backup_window_min, now=now)
+    backup = ensure_backup(target, window_min=window, now=now, live=live)
     operation_id = "op_" + uuid.uuid4().hex
 
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON")
+        if live or integrity_check_enabled():  # verify before locking (don't block NINA)
+            chk = conn.execute("PRAGMA quick_check").fetchone()[0]
+            if chk != "ok":
+                raise ExportError(f"quick_check failed before write: {chk}")
         count_before = conn.execute("SELECT COUNT(*) FROM exposuretemplate").fetchone()[0]
         max_before = conn.execute("SELECT COALESCE(MAX(Id), 0) FROM exposuretemplate").fetchone()[0]
 
@@ -309,10 +342,6 @@ def create_exposure_template(
         fk = conn.execute("PRAGMA foreign_key_check").fetchall()
         if fk:
             raise ExportError(f"foreign key violations: {fk[:5]}")
-        if integrity_check_enabled():
-            status = conn.execute("PRAGMA integrity_check").fetchone()[0]
-            if status != "ok":
-                raise ExportError(f"integrity_check failed: {status}")
         conn.commit()
     except sqlite3.OperationalError as e:
         conn.rollback()
@@ -393,10 +422,13 @@ def undo_operation(
     target = Path(target_db) if target_db else Path(op.target_db)  # type: ignore[union-attr]
 
     source = find_source_db()
-    if source is not None and target.resolve() == source.resolve() and not allow_live_write():
+    is_live = source is not None and target.resolve() == source.resolve()
+    if is_live and not allow_live_write():
         raise ExportError("refusing to undo on the live DB; set TS_ASSISTANT_ALLOW_LIVE_WRITE=1")
 
-    backup = ensure_backup(target, now=now)
+    # Undo is the only non-additive live op, so it gets the same backup-every-write
+    # (window 0) + WAL-consistent copy treatment as a live write.
+    backup = ensure_backup(target, window_min=(0 if is_live else None), now=now, live=is_live)
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row  # introspect()/validate look up columns by name
     try:

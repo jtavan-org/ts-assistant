@@ -86,6 +86,32 @@
   white-space: nowrap;
 }
 
+/* Operating-mode banner (o2c / live mode) */
+.mode-banner {
+  flex: 0 0 auto;
+  padding: 5px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.mode-staging {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.mode-live {
+  background: #5c0d12;
+  color: #ffd9dc;
+  border-bottom-color: #ff6b6b;
+}
+.mode-error {
+  background: #5c3a0d;
+  color: #ffe9c2;
+  border-bottom-color: #ffb454;
+}
+
 /* Body layout */
 .body {
   display: flex;

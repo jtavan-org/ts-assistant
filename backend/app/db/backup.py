@@ -45,14 +45,36 @@ class BackupInfo(BaseModel):
 
 
 def backup_signature(db_path: Path) -> str:
-    """Cheap change-detection token for a DB file: size + nanosecond mtime."""
+    """Cheap change-detection token for a DB file: size + nanosecond mtime.
+
+    Includes the ``-wal`` sidecar when present: a live DB NINA writes in WAL mode
+    lands new data in ``-wal`` *without* changing the main file's size/mtime until a
+    checkpoint, so a main-file-only signature would miss external writes and let
+    coalescing reuse a backup taken before them. Folding ``-wal`` in closes that hole.
+    """
     st = db_path.stat()
-    return f"size:{st.st_size};mtime:{st.st_mtime_ns}"
+    sig = f"size:{st.st_size};mtime:{st.st_mtime_ns}"
+    wal = db_path.with_name(db_path.name + "-wal")
+    try:
+        wst = wal.stat()
+        sig += f";wal:{wst.st_size}:{wst.st_mtime_ns}"
+    except FileNotFoundError:
+        pass
+    return sig
 
 
-def consistent_copy(src: Path, dest: Path) -> None:
-    """Transactionally consistent copy of a SQLite DB via the Online Backup API."""
-    src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+def consistent_copy(src: Path, dest: Path, *, live: bool = False) -> None:
+    """Transactionally consistent copy of a SQLite DB via the Online Backup API.
+
+    In ``live`` mode the source may be a WAL database NINA holds open; we open it
+    read-write-capable (the backup API never modifies the source) so SQLite maps the
+    ``-shm`` index and the copy captures all committed WAL frames. A ``mode=ro`` open
+    can silently miss those frames — a backup that is "torn in time".
+    """
+    if live:
+        src_conn = sqlite3.connect(str(src))
+    else:
+        src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
     dest_conn = sqlite3.connect(dest)
     try:
         with dest_conn:
@@ -77,7 +99,11 @@ def _sidecar(backup_path: Path) -> Path:
 
 
 def create_backup(
-    db_path: Path, *, now: datetime | None = None, gzip_it: bool | None = None
+    db_path: Path,
+    *,
+    now: datetime | None = None,
+    gzip_it: bool | None = None,
+    live: bool = False,
 ) -> BackupInfo:
     ensure_dirs()
     now = now or datetime.now(timezone.utc)
@@ -85,7 +111,7 @@ def create_backup(
     sig8 = hashlib.sha1(sig.encode()).hexdigest()[:8]
     name = f"{db_path.stem}-{now.strftime('%Y%m%dT%H%M%SZ')}-{sig8}.sqlite"
     dest = _unique(BACKUP_DIR / name)
-    consistent_copy(db_path, dest)
+    consistent_copy(db_path, dest, live=live)
 
     do_gzip = backup_gzip() if gzip_it is None else gzip_it
     if do_gzip:
@@ -136,13 +162,17 @@ def should_backup(db_path: Path, *, window_min: int, now: datetime) -> bool:
 
 
 def ensure_backup(
-    db_path: Path, *, window_min: int | None = None, now: datetime | None = None
+    db_path: Path,
+    *,
+    window_min: int | None = None,
+    now: datetime | None = None,
+    live: bool = False,
 ) -> BackupInfo:
     """Return the backup that is this write's restore point — new or reused."""
     now = now or datetime.now(timezone.utc)
     window = backup_window_min() if window_min is None else window_min
     if should_backup(db_path, window_min=window, now=now):
-        info = create_backup(db_path, now=now)
+        info = create_backup(db_path, now=now, live=live)
         ops.set_target_state(
             str(db_path.resolve()),
             last_backup_time=now.isoformat(),

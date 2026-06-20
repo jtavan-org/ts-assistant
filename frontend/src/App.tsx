@@ -321,8 +321,9 @@ export default function App() {
   }
 
   // Expand every mosaic group into per-pane targets, attach the shared exposure
-  // plans, and POST to the export API. Writes go to a staging DB (never the live
-  // source); the frontend's tested mosaicPanels is the single source of geometry.
+  // plans, and POST to the export API. Writes go to a staging DB by default, or to
+  // the live DB in production mode (backend-resolved); the frontend's tested
+  // mosaicPanels is the single source of geometry.
   async function saveProject() {
     if (!projectDraft || !fovSize || fovSize.widthDeg <= 0) return;
     const draft = projectDraft;
@@ -375,9 +376,10 @@ export default function App() {
         targets: apiTargets,
       });
 
-      // Surface the just-created project in the list (it lives in the staging DB,
-      // which the read path doesn't load) so the user sees it land; its targets
-      // also appear on the sky. Optimistic + local to this session.
+      // Surface the just-created project in the list so the user sees it land; its
+      // targets also appear on the sky. In staging mode the read path doesn't load
+      // the staging DB, so this is optimistic + session-local; in live mode the next
+      // reload reads it back from the real DB.
       const created: Project = {
         id: res.project_id,
         name,
@@ -410,10 +412,14 @@ export default function App() {
       };
       setProjects((prev) => [created, ...prev]);
 
+      const targetCount = res.counts.target ?? apiTargets.length;
       const file = res.target_db.split(/[/\\]/).pop();
       setSaveResult({
         ok: true,
-        message: `Saved “${name}” (${res.counts.target ?? apiTargets.length} target(s)) to staging DB “${file}”, backup taken. Import it into NINA to use it.`,
+        message:
+          health?.mode === "LIVE"
+            ? `Saved “${name}” (${targetCount} target(s)) to your live Target Scheduler database, backup taken.`
+            : `Saved “${name}” (${targetCount} target(s)) to staging DB “${file}”, backup taken. Import it into NINA to use it.`,
       });
       // Return to the New-project state so another can be started; keep the message.
       setProjectDraft(null);
@@ -491,6 +497,25 @@ export default function App() {
         </div>
         {error && <div className="error">{error}</div>}
       </header>
+
+      {health && (
+        <div
+          className={
+            "mode-banner " +
+            (health.live_error
+              ? "mode-error"
+              : health.mode === "LIVE"
+                ? "mode-live"
+                : "mode-staging")
+          }
+        >
+          {health.live_error
+            ? `⚠ Live mode is enabled but misconfigured — ${health.live_error}`
+            : health.mode === "LIVE"
+              ? "● PRODUCTION — changes write directly to your live Target Scheduler database"
+              : "Staging mode — changes save to a separate copy; import it into NINA to use them"}
+        </div>
+      )}
 
       <div className="body">
         <aside className="sidebar">
