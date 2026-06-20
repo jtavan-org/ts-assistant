@@ -18,9 +18,6 @@ from pydantic import BaseModel, Field
 from .config import DATA_DIR, ensure_dirs
 
 PLAN_TEMPLATES_FILE = DATA_DIR / "plan_templates.json"
-# Pre-rename filename (these were once called "plan groups"). We migrate it forward
-# one time so the rename never loses a user's saved definitions.
-LEGACY_FILE = DATA_DIR / "plan_groups.json"
 
 
 class PlanTemplateItem(BaseModel):
@@ -36,36 +33,12 @@ class PlanTemplate(BaseModel):
     items: list[PlanTemplateItem] = Field(default_factory=list)
 
 
-def _load_raw(path) -> list[dict]:
-    try:
-        return json.loads(path.read_text() or "[]")
-    except (OSError, json.JSONDecodeError):
-        return []
-
-
-def _migrate_legacy() -> None:
-    """One-time forward-migration from the pre-rename ``plan_groups.json``.
-
-    Merges any legacy definitions into the current file (current wins on id
-    collision, so post-rename edits aren't clobbered) and renames the legacy file
-    so this never runs again.
-    """
-    if not LEGACY_FILE.is_file():
-        return
-    by_id: dict[str, dict] = {}
-    for r in _load_raw(LEGACY_FILE) + _load_raw(PLAN_TEMPLATES_FILE):
-        if isinstance(r, dict) and "id" in r:
-            by_id[r["id"]] = r  # later (current) entries override earlier (legacy)
-    PLAN_TEMPLATES_FILE.write_text(json.dumps(list(by_id.values()), indent=2))
-    LEGACY_FILE.rename(LEGACY_FILE.parent / (LEGACY_FILE.name + ".migrated"))
-
-
 def _read() -> list[PlanTemplate]:
     ensure_dirs()
-    _migrate_legacy()
     if not PLAN_TEMPLATES_FILE.is_file():
         return []
-    return [PlanTemplate(**r) for r in _load_raw(PLAN_TEMPLATES_FILE)]
+    raw = json.loads(PLAN_TEMPLATES_FILE.read_text() or "[]")
+    return [PlanTemplate(**r) for r in raw]
 
 
 def _write(items: list[PlanTemplate]) -> None:
