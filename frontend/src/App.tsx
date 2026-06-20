@@ -19,10 +19,12 @@ import {
   type ExposureTemplate,
   type ExposureTemplateInput,
   type Health,
+  PROJECT_SETTING_DEFAULTS,
   type PlanTemplate,
   type PlanTemplateInput,
   type ProfileInfo,
   type Project,
+  type ProjectSettings,
   type RuleWeight,
   type Survey,
   type Target,
@@ -249,6 +251,7 @@ export default function App() {
       name: "New project",
       profileId: activeProfileId,
       ruleWeights: ruleWeightDefaults.map((w) => ({ ...w })),
+      settings: { ...PROJECT_SETTING_DEFAULTS },
       targets: [t],
       activeTargetId: t.id,
       exposurePlans: [
@@ -289,6 +292,21 @@ export default function App() {
       desired: p.desired,
       exposureTemplateId: p.exposure_template_id,
     }));
+    const d = PROJECT_SETTING_DEFAULTS;
+    const settings: ProjectSettings = {
+      priority: project.priority ?? d.priority,
+      minimum_time: project.minimum_time ?? d.minimum_time,
+      minimum_altitude: project.minimum_altitude ?? d.minimum_altitude,
+      maximum_altitude: project.maximum_altitude ?? d.maximum_altitude,
+      use_custom_horizon: project.use_custom_horizon ?? d.use_custom_horizon,
+      horizon_offset: project.horizon_offset ?? d.horizon_offset,
+      meridian_window: project.meridian_window ?? d.meridian_window,
+      filter_switch_frequency: project.filter_switch_frequency ?? d.filter_switch_frequency,
+      dither_every: project.dither_every ?? d.dither_every,
+      enable_grader: project.enable_grader ?? d.enable_grader,
+      flats_handling: project.flats_handling ?? d.flats_handling,
+      smart_exposure_order: project.smart_exposure_order ?? d.smart_exposure_order,
+    };
     setProjectDraft({
       name: project.name,
       profileId: project.profile_id ?? activeProfileId,
@@ -296,6 +314,7 @@ export default function App() {
         project.rule_weights && project.rule_weights.length
           ? project.rule_weights.map((w) => ({ ...w }))
           : ruleWeightDefaults.map((w) => ({ ...w })),
+      settings,
       targets,
       activeTargetId: targets[0]?.id ?? null,
       exposurePlans,
@@ -422,6 +441,10 @@ export default function App() {
 
   function patchRuleWeights(ruleWeights: RuleWeight[]) {
     setProjectDraft((d) => (d ? { ...d, ruleWeights } : d));
+  }
+
+  function patchSettings(settings: ProjectSettings) {
+    setProjectDraft((d) => (d ? { ...d, settings } : d));
   }
 
   // Exposure plan templates (qiz.6) — app-side named bundles of template+count.
@@ -551,6 +574,7 @@ export default function App() {
         name,
         is_mosaic: isMosaic,
         targets: apiTargets,
+        ...draft.settings, // advanced project settings (psq)
         ...ruleWeightsBody,
       };
       const res = isEdit
@@ -566,8 +590,8 @@ export default function App() {
         description: null,
         profile_id: draft.profileId.trim(),
         state: "draft",
-        priority: 1,
         is_mosaic: isMosaic,
+        ...draft.settings, // priority + advanced settings, so a re-edit prefills correctly
         targets: apiTargets.map((t, i) => ({
           id: res.target_ids[i] ?? -(i + 1),
           name: t.name,
@@ -752,6 +776,7 @@ export default function App() {
                 onRequestNewTemplate={requestNewTemplate}
                 ruleWeightDefaults={ruleWeightDefaults}
                 onPatchRuleWeights={patchRuleWeights}
+                onPatchSettings={patchSettings}
                 onSave={saveProject}
               />
             }

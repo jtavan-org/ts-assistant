@@ -143,6 +143,22 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
             priority=_row_get(r, "priority", "priority_col"),
             is_mosaic=bool(_row_get(r, "isMosaic", default=0)),
             rule_weights=weights_by_project.get(pid, []),
+            # Advanced project settings (psq) — for the editor to prefill.
+            minimum_time=_opt_int(_row_get(r, "minimumtime", "minimumTime")),
+            minimum_altitude=_opt_float(_row_get(r, "minimumaltitude", "minimumAltitude")),
+            maximum_altitude=_opt_float(_row_get(r, "maximumAltitude", "maximumaltitude")),
+            use_custom_horizon=_opt_bool(_row_get(r, "usecustomhorizon", "useCustomHorizon")),
+            horizon_offset=_opt_float(_row_get(r, "horizonoffset", "horizonOffset")),
+            meridian_window=_opt_int(_row_get(r, "meridianwindow", "meridianWindow")),
+            filter_switch_frequency=_opt_int(
+                _row_get(r, "filterswitchfrequency", "filterSwitchFrequency")
+            ),
+            dither_every=_opt_int(_row_get(r, "ditherevery", "ditherEvery")),
+            enable_grader=_opt_bool(_row_get(r, "enablegrader", "enableGrader")),
+            flats_handling=_opt_int(_row_get(r, "flatsHandling", "flatshandling")),
+            smart_exposure_order=_opt_bool(
+                _row_get(r, "smartexposureorder", "smartExposureOrder")
+            ),
         )
 
     for r in conn.execute(f'SELECT * FROM "{t_target}"'):

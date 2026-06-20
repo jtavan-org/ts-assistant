@@ -387,6 +387,61 @@ def test_custom_rule_weights_override_defaults(tmp_path):
     assert got["Setting Soonest"] == defaults["Setting Soonest"]
 
 
+def test_create_writes_advanced_settings(tmp_path):
+    """psq: project-level advanced settings are persisted on create."""
+    db = _baseline(tmp_path / "t.sqlite")
+    spec = _new_project()
+    spec.minimum_time = 45
+    spec.minimum_altitude = 25.0
+    spec.maximum_altitude = 80.0
+    spec.use_custom_horizon = True
+    spec.meridian_window = 60
+    spec.dither_every = 3
+    spec.enable_grader = False
+    spec.smart_exposure_order = True
+    spec.flats_handling = 2
+    res = export_project(spec, target_db=db, now=T0)
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM project WHERE Id = ?", (res.project_id,)).fetchone()
+    conn.close()
+    assert row["minimumtime"] == 45
+    assert row["minimumaltitude"] == 25.0
+    assert row["maximumAltitude"] == 80.0
+    assert row["usecustomhorizon"] == 1
+    assert row["meridianwindow"] == 60
+    assert row["ditherevery"] == 3
+    assert row["enablegrader"] == 0
+    assert row["smartexposureorder"] == 1
+    assert row["flatsHandling"] == 2
+
+
+def test_update_changes_advanced_settings_keeps_createdate(tmp_path):
+    """psq: editing applies new settings; createdate is preserved (not reset)."""
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = _export_draft(db).project_id
+    tgt, _plan_id, etid = _first_target_and_plan(db, pid)
+    conn = sqlite3.connect(db)
+    created0 = conn.execute("SELECT createdate FROM project WHERE Id = ?", (pid,)).fetchone()[0]
+    conn.close()
+
+    spec = ProjectSpec(
+        profile_id=PROFILE, name="Draft", state=0,
+        minimum_time=99, enable_grader=False, maximum_altitude=70.0,
+        targets=[TargetSpec(id=tgt, name="T1", ra_deg=120.0, dec_deg=20.0,
+                            exposure_plans=[ExposurePlanSpec(exposure=120.0, desired=1, exposure_template_id=etid)])],
+    )
+    update_project(pid, spec, target_db=db, now=datetime(2026, 6, 21, tzinfo=timezone.utc))
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM project WHERE Id = ?", (pid,)).fetchone()
+    conn.close()
+    assert row["minimumtime"] == 99 and row["enablegrader"] == 0 and row["maximumAltitude"] == 70.0
+    assert row["createdate"] == created0  # preserved across the edit
+
+
 def test_rule_weight_defaults_endpoint():
     from fastapi.testclient import TestClient
 

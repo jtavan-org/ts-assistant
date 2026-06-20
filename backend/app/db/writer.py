@@ -80,6 +80,18 @@ class ProjectSpec(BaseModel):
     # Optional per-rule weight overrides (qiz.3). Unset → NINA defaults; provided
     # weights override matching rules by name, others keep their default.
     rule_weights: list[RuleWeightSpec] | None = None
+    # Advanced project settings (psq) — NINA's project-tab knobs. Defaults match NINA.
+    minimum_time: int = 30
+    minimum_altitude: float = 0.0
+    maximum_altitude: float = 0.0
+    use_custom_horizon: bool = False
+    horizon_offset: float = 0.0
+    meridian_window: int = 0
+    filter_switch_frequency: int = 0
+    dither_every: int = 0
+    enable_grader: bool = True
+    flats_handling: int = 0
+    smart_exposure_order: bool = False
 
 
 class ExposureTemplateSpec(BaseModel):
@@ -151,6 +163,8 @@ WRITTEN_COLUMNS: dict[str, frozenset[str]] = {
             "createdate", "minimumtime", "minimumaltitude", "usecustomhorizon",
             "horizonoffset", "meridianwindow", "filterswitchfrequency", "ditherevery",
             "enablegrader", "guid",
+            # psq advanced settings (present in the canonical schema as ALTER-added cols).
+            "maximumAltitude", "flatsHandling", "smartexposureorder",
         }
     ),
     "target": frozenset(
@@ -222,8 +236,9 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
         "INSERT INTO project"
         " (profileId, name, description, state, priority, isMosaic,"
         "  createdate, minimumtime, minimumaltitude, usecustomhorizon, horizonoffset,"
-        "  meridianwindow, filterswitchfrequency, ditherevery, enablegrader, guid)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "  meridianwindow, filterswitchfrequency, ditherevery, enablegrader,"
+        "  maximumAltitude, flatsHandling, smartexposureorder, guid)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             spec.profile_id,
             spec.name,
@@ -232,14 +247,17 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
             spec.priority,
             1 if spec.is_mosaic else 0,
             int(time.time()),  # createdate (Unix seconds)
-            30,                # minimumtime (minutes)
-            0.0,               # minimumaltitude
-            0,                 # usecustomhorizon (false)
-            0.0,               # horizonoffset
-            0,                 # meridianwindow
-            0,                 # filterswitchfrequency
-            0,                 # ditherevery (0 = off)
-            1,                 # enablegrader (true)
+            spec.minimum_time,
+            spec.minimum_altitude,
+            1 if spec.use_custom_horizon else 0,
+            spec.horizon_offset,
+            spec.meridian_window,
+            spec.filter_switch_frequency,
+            spec.dither_every,
+            1 if spec.enable_grader else 0,
+            spec.maximum_altitude,
+            spec.flats_handling,
+            1 if spec.smart_exposure_order else 0,
             _guid(),
         ),
     )
@@ -431,35 +449,34 @@ def update_project(
     stable** so target-keyed rows (flathistory, etc.) are preserved; only changed
     columns/plans are touched. Mirrors the create path's INSERT shapes.
     """
-    # Update the editable fields, and self-heal any NINA-required column that is
-    # NULL (COALESCE keeps existing values). NINA's EF model treats these as
-    # non-nullable; a NULL (e.g. from a row written by an older/buggy version)
-    # crashes Target Scheduler's project load (bead nil). Editing repairs it.
+    # Apply the editable fields + advanced settings from the spec (psq). The spec
+    # always carries non-null values, so this also self-heals any NINA-required column
+    # that was NULL (bead nil) — a NULL crashes Target Scheduler's project load.
+    # createdate is preserved (COALESCE keeps the original; healed only if NULL) since
+    # it's the project's creation time, not an editable field.
     conn.execute(
         "UPDATE project SET name = ?, description = ?, priority = ?,"
         " createdate = COALESCE(createdate, ?),"
-        " minimumtime = COALESCE(minimumtime, ?),"
-        " minimumaltitude = COALESCE(minimumaltitude, ?),"
-        " usecustomhorizon = COALESCE(usecustomhorizon, ?),"
-        " horizonoffset = COALESCE(horizonoffset, ?),"
-        " meridianwindow = COALESCE(meridianwindow, ?),"
-        " filterswitchfrequency = COALESCE(filterswitchfrequency, ?),"
-        " ditherevery = COALESCE(ditherevery, ?),"
-        " enablegrader = COALESCE(enablegrader, ?)"
+        " minimumtime = ?, minimumaltitude = ?, usecustomhorizon = ?, horizonoffset = ?,"
+        " meridianwindow = ?, filterswitchfrequency = ?, ditherevery = ?, enablegrader = ?,"
+        " maximumAltitude = ?, flatsHandling = ?, smartexposureorder = ?"
         " WHERE Id = ?",
         (
             spec.name,
             spec.description,
             spec.priority,
-            int(time.time()),  # createdate
-            30,                # minimumtime
-            0.0,               # minimumaltitude
-            0,                 # usecustomhorizon
-            0.0,               # horizonoffset
-            0,                 # meridianwindow
-            0,                 # filterswitchfrequency
-            0,                 # ditherevery
-            1,                 # enablegrader
+            int(time.time()),  # createdate (only used if currently NULL)
+            spec.minimum_time,
+            spec.minimum_altitude,
+            1 if spec.use_custom_horizon else 0,
+            spec.horizon_offset,
+            spec.meridian_window,
+            spec.filter_switch_frequency,
+            spec.dither_every,
+            1 if spec.enable_grader else 0,
+            spec.maximum_altitude,
+            spec.flats_handling,
+            1 if spec.smart_exposure_order else 0,
             project_id,
         ),
     )

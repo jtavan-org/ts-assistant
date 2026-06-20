@@ -160,11 +160,13 @@ def build(path: Path) -> None:
             )
     _seed_rule_weights(conn, p1)
 
-    # Project 2: a single target (state=draft).
+    # Project 2: a single target (state=draft) with a couple of non-default settings
+    # so the reader's advanced-settings projection (psq) is exercised.
     cur = conn.execute(
-        "INSERT INTO project (ProfileId, name, description, state, priority, isMosaic)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (PROFILE, "M31 Andromeda", "single frame", 0, 1, 0),
+        "INSERT INTO project (ProfileId, name, description, state, priority, isMosaic,"
+        " minimumTime, enableGrader)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (PROFILE, "M31 Andromeda", "single frame", 0, 1, 0, 45, 0),
     )
     p2 = cur.lastrowid
     tcur = conn.execute(

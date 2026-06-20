@@ -88,6 +88,15 @@ def test_loads_rule_weights(reader):
     assert len(rw) == 8
 
 
+def test_loads_project_settings(reader):
+    projects = {p.name: p for p in reader.load_projects()}
+    m31 = projects["M31 Andromeda"]
+    assert m31.minimum_time == 45  # seeded non-default
+    assert m31.enable_grader is False  # seeded 0
+    # a default-valued setting still projects through
+    assert m31.minimum_altitude == 0.0
+
+
 def test_schema_info(reader):
     info = reader.schema_info()
     assert info.db_present is True

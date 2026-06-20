@@ -1,6 +1,13 @@
-import type { ExposureTemplate, PlanTemplate, RuleWeight } from "../api";
+import {
+  PROJECT_SETTING_DEFAULTS,
+  type ExposureTemplate,
+  type PlanTemplate,
+  type ProjectSettings,
+  type RuleWeight,
+} from "../api";
 import { templateLabel } from "../templateLabel";
 import RuleWeightsEditor from "./RuleWeightsEditor";
+import ProjectSettingsEditor from "./ProjectSettingsEditor";
 import type { FovBox, PlaceMode } from "../sky/AladinView";
 
 /** One target being framed: a single pointing (1×1) or a mosaic (N×M panes). */
@@ -38,6 +45,8 @@ export interface ProjectDraft {
   exposurePlans: ExposurePlanDraft[];
   /** Scoring rule weights for the project (qiz.3); seeded from NINA defaults. */
   ruleWeights: RuleWeight[];
+  /** Advanced project settings (psq); seeded from NINA defaults. */
+  settings: ProjectSettings;
 }
 
 interface Props {
@@ -73,6 +82,7 @@ interface Props {
   /** NINA default rule weights — enables the editor's "Reset to defaults". */
   ruleWeightDefaults: RuleWeight[];
   onPatchRuleWeights: (weights: RuleWeight[]) => void;
+  onPatchSettings: (settings: ProjectSettings) => void;
   onSave: () => void;
 }
 
@@ -110,6 +120,7 @@ export default function ProjectBuilder({
   onRequestNewTemplate,
   ruleWeightDefaults,
   onPatchRuleWeights,
+  onPatchSettings,
   onSave,
 }: Props) {
   const hasFov = !!fov && fov.widthDeg > 0 && fov.heightDeg > 0;
@@ -425,6 +436,12 @@ export default function ProjectBuilder({
                 onChange={onPatchRuleWeights}
               />
             )}
+
+            <ProjectSettingsEditor
+              settings={draft.settings}
+              defaults={PROJECT_SETTING_DEFAULTS}
+              onChange={onPatchSettings}
+            />
 
             <button
               className="eq-save"

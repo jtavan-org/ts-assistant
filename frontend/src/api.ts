@@ -40,6 +40,38 @@ export interface Target {
   exposure_plans: ExposurePlan[];
 }
 
+/** Advanced project settings (psq) — NINA's project-tab knobs. */
+export interface ProjectSettings {
+  priority: number; // 0 Low, 1 Normal, 2 High
+  minimum_time: number; // minutes
+  minimum_altitude: number; // degrees
+  maximum_altitude: number; // degrees (0 = none)
+  use_custom_horizon: boolean;
+  horizon_offset: number; // degrees
+  meridian_window: number; // minutes
+  filter_switch_frequency: number;
+  dither_every: number;
+  enable_grader: boolean;
+  flats_handling: number;
+  smart_exposure_order: boolean;
+}
+
+/** NINA's project defaults (mirrors writer.ProjectSpec defaults). */
+export const PROJECT_SETTING_DEFAULTS: ProjectSettings = {
+  priority: 1,
+  minimum_time: 30,
+  minimum_altitude: 0,
+  maximum_altitude: 0,
+  use_custom_horizon: false,
+  horizon_offset: 0,
+  meridian_window: 0,
+  filter_switch_frequency: 0,
+  dither_every: 0,
+  enable_grader: true,
+  flats_handling: 0,
+  smart_exposure_order: false,
+};
+
 export interface Project {
   id: number;
   name: string;
@@ -50,6 +82,18 @@ export interface Project {
   is_mosaic: boolean;
   targets: Target[];
   rule_weights?: RuleWeight[];
+  // Advanced settings (psq); present from the reader, nullable for older rows.
+  minimum_time?: number | null;
+  minimum_altitude?: number | null;
+  maximum_altitude?: number | null;
+  use_custom_horizon?: boolean | null;
+  horizon_offset?: number | null;
+  meridian_window?: number | null;
+  filter_switch_frequency?: number | null;
+  dither_every?: number | null;
+  enable_grader?: boolean | null;
+  flats_handling?: number | null;
+  smart_exposure_order?: boolean | null;
 }
 
 export interface ExposureTemplate {
@@ -191,7 +235,7 @@ export interface ExportTargetInput {
   exposure_plans: ExportPlanInput[];
 }
 
-export interface ExportRequest {
+export interface ExportRequest extends Partial<ProjectSettings> {
   profile_id: string;
   name: string;
   description?: string | null;

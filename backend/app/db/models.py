@@ -56,6 +56,18 @@ class Project(BaseModel):
     is_mosaic: bool = False
     targets: list[Target] = []
     rule_weights: list[RuleWeight] = []
+    # Advanced project settings (psq) — surfaced so the editor can prefill them.
+    minimum_time: int | None = None
+    minimum_altitude: float | None = None
+    maximum_altitude: float | None = None
+    use_custom_horizon: bool | None = None
+    horizon_offset: float | None = None
+    meridian_window: int | None = None
+    filter_switch_frequency: int | None = None
+    dither_every: int | None = None
+    enable_grader: bool | None = None
+    flats_handling: int | None = None
+    smart_exposure_order: bool | None = None
 
 
 class ExposureTemplate(BaseModel):
