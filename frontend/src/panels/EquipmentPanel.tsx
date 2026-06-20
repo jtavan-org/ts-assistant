@@ -11,6 +11,8 @@ import { computeFov } from "../sky/fov";
 import type { FovBox } from "../sky/AladinView";
 
 interface Props {
+  /** Active NINA profile — rigs are scoped to it (bg0). */
+  profileId: string;
   /** Emits the selected/edited profile's field of view (degrees). */
   onFovChange: (fov: FovBox | null) => void;
 }
@@ -39,7 +41,7 @@ const NUM_FIELDS: { key: NumField; label: string; step: number }[] = [
   { key: "sensor_px_h", label: "Sensor H (px)", step: 1 },
 ];
 
-export default function EquipmentPanel({ onFovChange }: Props) {
+export default function EquipmentPanel({ profileId, onFovChange }: Props) {
   const [profiles, setProfiles] = useState<Equipment[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [working, setWorking] = useState<EquipmentInput | null>(null);
@@ -67,15 +69,16 @@ export default function EquipmentPanel({ onFovChange }: Props) {
     emitFov(w);
   }
 
+  // Load rigs for the active profile; refetch when it changes.
   useEffect(() => {
-    fetchEquipment()
+    fetchEquipment(profileId || undefined)
       .then((list) => {
         setProfiles(list);
         select(list, list[0]?.id ?? "");
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [profileId]);
 
   function setField(key: keyof EquipmentInput, value: string | number) {
     if (!working) return;
@@ -99,7 +102,7 @@ export default function EquipmentPanel({ onFovChange }: Props) {
 
   async function add() {
     try {
-      const created = await createEquipment({ id: "", ...BLANK });
+      const created = await createEquipment({ id: "", profile_id: profileId, ...BLANK });
       const list = [...profiles, created];
       setProfiles(list);
       select(list, created.id);

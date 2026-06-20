@@ -80,7 +80,15 @@ export interface PlanTemplateItem {
 export interface PlanTemplate {
   id: string;
   name: string;
+  /** NINA profile this template belongs to (bg0). null = legacy/unscoped. */
+  profile_id?: string | null;
   items: PlanTemplateItem[];
+}
+
+/** A NINA profile id with its display name (alias, or a truncated GUID). */
+export interface ProfileInfo {
+  id: string;
+  name: string;
 }
 
 export type PlanTemplateInput = Omit<PlanTemplate, "id"> & { id?: string };
@@ -128,6 +136,8 @@ async function getJSON<T>(path: string): Promise<T> {
 export interface Equipment {
   id: string;
   name: string;
+  /** NINA profile this rig belongs to (bg0). null = legacy/unscoped. */
+  profile_id?: string | null;
   pixel_size_um: number;
   sensor_px_w: number;
   sensor_px_h: number;
@@ -216,21 +226,30 @@ async function postWithDetail<T>(path: string, body: unknown): Promise<T> {
 export const createExport = (req: ExportRequest) =>
   postWithDetail<ExportResult>("/export", req);
 
+// Append ?profile_id= only when a profile is active, so the param stays optional.
+const scoped = (path: string, profileId?: string) =>
+  profileId ? `${path}?profile_id=${encodeURIComponent(profileId)}` : path;
+
 export const fetchHealth = () => getJSON<Health>("/health");
 export const fetchSurveys = () => getJSON<Survey[]>("/surveys");
 export const fetchProjects = () => getJSON<Project[]>("/projects");
+export const fetchProfiles = () => getJSON<ProfileInfo[]>("/profiles");
+export const setProfileAlias = (id: string, name: string) =>
+  sendJSON<ProfileInfo>(`/profiles/${encodeURIComponent(id)}`, "PUT", { name });
 export const fetchExposureTemplates = () =>
   getJSON<ExposureTemplate[]>("/exposure-templates");
 export const createExposureTemplate = (input: ExposureTemplateInput) =>
   postWithDetail<ExposureTemplate>("/exposure-templates", input);
-export const fetchPlanTemplates = () => getJSON<PlanTemplate[]>("/plan-templates");
+export const fetchPlanTemplates = (profileId?: string) =>
+  getJSON<PlanTemplate[]>(scoped("/plan-templates", profileId));
 export const createPlanTemplate = (g: PlanTemplateInput) =>
   sendJSON<PlanTemplate>("/plan-templates", "POST", g);
 export const updatePlanTemplate = (g: PlanTemplate) =>
   sendJSON<PlanTemplate>(`/plan-templates/${g.id}`, "PUT", g);
 export const deletePlanTemplate = (id: string) =>
   sendJSON<{ ok: boolean }>(`/plan-templates/${id}`, "DELETE");
-export const fetchEquipment = () => getJSON<Equipment[]>("/equipment");
+export const fetchEquipment = (profileId?: string) =>
+  getJSON<Equipment[]>(scoped("/equipment", profileId));
 export const createEquipment = (e: EquipmentInput) =>
   sendJSON<Equipment>("/equipment", "POST", e);
 export const updateEquipment = (e: EquipmentInput) =>

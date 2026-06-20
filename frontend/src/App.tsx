@@ -7,6 +7,7 @@ import {
   fetchExposureTemplates,
   fetchHealth,
   fetchPlanTemplates,
+  fetchProfiles,
   fetchProjects,
   fetchSurveys,
   updatePlanTemplate,
@@ -16,6 +17,7 @@ import {
   type Health,
   type PlanTemplate,
   type PlanTemplateInput,
+  type ProfileInfo,
   type Project,
   type Survey,
   type Target,
@@ -29,6 +31,7 @@ import AladinView, {
   type CoverageCorners,
 } from "./sky/AladinView";
 import ProjectList from "./panels/ProjectList";
+import ProfilePicker from "./panels/ProfilePicker";
 import EquipmentPanel from "./panels/EquipmentPanel";
 import PlanTemplatesPanel from "./panels/PlanTemplatesPanel";
 import NewTemplateModal from "./panels/NewTemplateModal";
@@ -54,6 +57,10 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [templates, setTemplates] = useState<ExposureTemplate[]>([]);
   const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([]);
+  const [profileList, setProfileList] = useState<ProfileInfo[]>([]);
+  // The user's explicit pick ("" = none yet); the *effective* active profile is
+  // derived below as this-or-the-first-available, so no default-sync effect is needed.
+  const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
   const [focus, setFocus] = useState<SkyFocus | null>(null);
@@ -85,8 +92,8 @@ export default function App() {
     fetchExposureTemplates()
       .then(setTemplates)
       .catch(() => {});
-    fetchPlanTemplates()
-      .then(setPlanTemplates)
+    fetchProfiles()
+      .then(setProfileList)
       .catch(() => {});
   }, []);
 
@@ -94,13 +101,50 @@ export default function App() {
     () => surveys.find((s) => s.id === surveyId),
     [surveys, surveyId],
   );
-  const targets = useMemo(() => projects.flatMap((p) => p.targets), [projects]);
-  // Profile ids already in the DB — a new project usually targets the same one.
-  const profiles = useMemo(() => {
-    const ids = new Set<string>();
-    for (const p of projects) if (p.profile_id) ids.add(p.profile_id);
-    return [...ids];
-  }, [projects]);
+  // All profiles to offer in the picker: those named by /api/profiles, unioned with
+  // any profile id seen on a loaded project/template (a robust fallback).
+  const profiles: ProfileInfo[] = useMemo(() => {
+    const byId = new Map<string, ProfileInfo>();
+    for (const p of profileList) byId.set(p.id, p);
+    const seed = (id: string | null | undefined) => {
+      if (id && !byId.has(id)) byId.set(id, { id, name: id.slice(0, 8) });
+    };
+    for (const p of projects) seed(p.profile_id);
+    for (const t of templates) seed(t.profile_id);
+    return [...byId.values()];
+  }, [profileList, projects, templates]);
+
+  // Effective active profile: the user's pick, else the first available. Derived
+  // (not stored) so it tracks late-loading profiles without a sync effect.
+  const activeProfileId = selectedProfileId || profiles[0]?.id || "";
+
+  // Plan templates are profile-scoped server-side (app-local store), so (re)fetch
+  // them whenever the active profile changes.
+  useEffect(() => {
+    if (!activeProfileId) return;
+    fetchPlanTemplates(activeProfileId).then(setPlanTemplates).catch(() => {});
+  }, [activeProfileId]);
+
+  // Scope the DB-backed data client-side: it's already fully loaded with a
+  // profile_id on every row, so switching is instant (no refetch).
+  const visibleProjects = useMemo(
+    () =>
+      activeProfileId
+        ? projects.filter((p) => p.profile_id === activeProfileId)
+        : projects,
+    [projects, activeProfileId],
+  );
+  const visibleTemplates = useMemo(
+    () =>
+      activeProfileId
+        ? templates.filter((t) => t.profile_id === activeProfileId)
+        : templates,
+    [templates, activeProfileId],
+  );
+  const targets = useMemo(
+    () => visibleProjects.flatMap((p) => p.targets),
+    [visibleProjects],
+  );
   const fovBox: FovBox | null = useMemo(
     () => (showFov ? fovSize : null),
     [showFov, fovSize],
@@ -157,10 +201,9 @@ export default function App() {
   function newProject() {
     const t = makeTargetDraft("Target 1");
     setProjectDraft({
-      // Profile is hidden in the UI; derive it from the existing projects, or
-      // fall back to a template's profile (everything is one profile for now).
+      // New projects inherit the active profile chosen in the topbar picker.
       name: "New project",
-      profileId: profiles[0] ?? templates[0]?.profile_id ?? "",
+      profileId: activeProfileId,
       targets: [t],
       activeTargetId: t.id,
       exposurePlans: [
@@ -265,7 +308,8 @@ export default function App() {
 
   // Exposure plan templates (qiz.6) — app-side named bundles of template+count.
   async function onCreatePlanTemplate(g: PlanTemplateInput): Promise<PlanTemplate> {
-    const res = await createPlanTemplate(g);
+    // Stamp the active profile so it's only listed under that profile.
+    const res = await createPlanTemplate({ ...g, profile_id: activeProfileId });
     setPlanTemplates((prev) => [...prev, res]);
     return res;
   }
@@ -470,6 +514,11 @@ export default function App() {
             ))}
           </select>
         </label>
+        <ProfilePicker
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          onSelect={setSelectedProfileId}
+        />
         <label className="fov-toggle">
           <input
             type="checkbox"
@@ -489,7 +538,7 @@ export default function App() {
         <div className="status">
           {health?.db_present ? (
             <span>
-              {projects.length} projects · {targets.length} targets
+              {visibleProjects.length} projects · {targets.length} targets
             </span>
           ) : (
             <span className="warn">no database loaded</span>
@@ -519,12 +568,12 @@ export default function App() {
 
       <div className="body">
         <aside className="sidebar">
-          <EquipmentPanel onFovChange={setFovSize} />
+          <EquipmentPanel profileId={activeProfileId} onFovChange={setFovSize} />
           <ProjectBuilder
             fov={fovSize}
             draft={projectDraft}
             placeMode={placeMode}
-            templates={templates}
+            templates={visibleTemplates}
             planTemplates={planTemplates}
             saving={saving}
             liveMode={health?.mode === "LIVE"}
@@ -554,7 +603,7 @@ export default function App() {
             onSave={saveProject}
           />
           <PlanTemplatesPanel
-            templates={templates}
+            templates={visibleTemplates}
             planTemplates={planTemplates}
             onCreate={onCreatePlanTemplate}
             onUpdate={onUpdatePlanTemplate}
@@ -562,7 +611,7 @@ export default function App() {
             onRequestNewTemplate={requestNewTemplate}
           />
           <ProjectList
-            projects={projects}
+            projects={visibleProjects}
             selectedTargetId={selectedTargetId}
             onSelectTarget={selectTarget}
           />
@@ -590,10 +639,8 @@ export default function App() {
       </div>
       {templateModalOpen && (
         <NewTemplateModal
-          templates={templates}
-          profileId={
-            projectDraft?.profileId || templates[0]?.profile_id || profiles[0] || ""
-          }
+          templates={visibleTemplates}
+          profileId={activeProfileId}
           onSubmit={submitNewTemplate}
           onClose={cancelNewTemplate}
         />
