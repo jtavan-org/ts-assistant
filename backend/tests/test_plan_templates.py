@@ -63,3 +63,24 @@ def test_api_crud():
     assert client.delete(f"/api/plan-templates/{gid}").json() == {"ok": True}
     assert client.delete(f"/api/plan-templates/{gid}").status_code == 404
     assert client.get("/api/plan-templates").json() == []
+
+
+def test_profile_scoping():
+    client = TestClient(app)
+    client.post("/api/plan-templates", json={"name": "A-only", "profile_id": "A", "items": []})
+    client.post("/api/plan-templates", json={"name": "B-only", "profile_id": "B", "items": []})
+
+    names_a = {t["name"] for t in client.get("/api/plan-templates?profile_id=A").json()}
+    assert names_a == {"A-only"}
+    names_b = {t["name"] for t in client.get("/api/plan-templates?profile_id=B").json()}
+    assert names_b == {"B-only"}
+    # No filter still returns everything.
+    assert len(client.get("/api/plan-templates").json()) == 2
+
+
+def test_legacy_unscoped_visible_everywhere():
+    """An entry written before bg0 (no profile_id) shows under any profile."""
+    plan_templates.upsert(plan_templates.PlanTemplate(name="legacy", items=[]))
+    for pid in ("A", "B"):
+        names = {t["name"] for t in TestClient(app).get(f"/api/plan-templates?profile_id={pid}").json()}
+        assert "legacy" in names

@@ -22,8 +22,8 @@ class EquipmentInput(EquipmentProfile):
 
 
 @router.get("/equipment", response_model=list[EquipmentWithFov])
-def get_equipment() -> list[EquipmentWithFov]:
-    return list_profiles()
+def get_equipment(profile_id: str | None = None) -> list[EquipmentWithFov]:
+    return list_profiles(profile_id)
 
 
 @router.post("/equipment", response_model=EquipmentWithFov)

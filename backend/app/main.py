@@ -13,7 +13,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import equipment, export, plan_templates, projects, surveys, templates
+from .api import (
+    equipment,
+    export,
+    plan_templates,
+    profiles,
+    projects,
+    surveys,
+    templates,
+)
 from .config import ActiveMode, active_mode
 
 logger = logging.getLogger("ts_assistant")
@@ -72,6 +80,7 @@ app.include_router(equipment.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
 app.include_router(plan_templates.router, prefix="/api")
+app.include_router(profiles.router, prefix="/api")
 
 
 @app.get("/api/health")

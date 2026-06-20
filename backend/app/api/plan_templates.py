@@ -22,8 +22,8 @@ class PlanTemplateInput(PlanTemplate):
 
 
 @router.get("/plan-templates", response_model=list[PlanTemplate])
-def get_plan_templates() -> list[PlanTemplate]:
-    return list_plan_templates()
+def get_plan_templates(profile_id: str | None = None) -> list[PlanTemplate]:
+    return list_plan_templates(profile_id)
 
 
 @router.post("/plan-templates", response_model=PlanTemplate)

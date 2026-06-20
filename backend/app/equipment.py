@@ -20,6 +20,9 @@ EQUIPMENT_FILE = DATA_DIR / "equipment.json"
 class EquipmentProfile(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str
+    # NINA profile this rig belongs to (bg0). None = legacy/unscoped, shown under
+    # every profile until the user edits it (which stamps the active profile).
+    profile_id: str | None = None
     pixel_size_um: float
     sensor_px_w: int
     sensor_px_h: int
@@ -77,8 +80,13 @@ def _write(profiles: list[EquipmentProfile]) -> None:
     )
 
 
-def list_profiles() -> list[EquipmentWithFov]:
-    return [_with_fov(p) for p in _read()]
+def _visible_in(entry_profile_id: str | None, wanted: str | None) -> bool:
+    """A None entry (legacy/unscoped) is visible everywhere; otherwise ids must match."""
+    return wanted is None or entry_profile_id is None or entry_profile_id == wanted
+
+
+def list_profiles(profile_id: str | None = None) -> list[EquipmentWithFov]:
+    return [_with_fov(p) for p in _read() if _visible_in(p.profile_id, profile_id)]
 
 
 def upsert(profile: EquipmentProfile) -> EquipmentWithFov:

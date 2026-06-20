@@ -30,6 +30,9 @@ class PlanTemplateItem(BaseModel):
 class PlanTemplate(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
     name: str
+    # NINA profile this template belongs to (bg0). None = legacy/unscoped, shown under
+    # every profile until the user edits it (which stamps the active profile).
+    profile_id: str | None = None
     items: list[PlanTemplateItem] = Field(default_factory=list)
 
 
@@ -46,8 +49,13 @@ def _write(items: list[PlanTemplate]) -> None:
     PLAN_TEMPLATES_FILE.write_text(json.dumps([t.model_dump() for t in items], indent=2))
 
 
-def list_plan_templates() -> list[PlanTemplate]:
-    return _read()
+def list_plan_templates(profile_id: str | None = None) -> list[PlanTemplate]:
+    # A None entry (legacy/unscoped) is visible everywhere; otherwise ids must match.
+    return [
+        t
+        for t in _read()
+        if profile_id is None or t.profile_id is None or t.profile_id == profile_id
+    ]
 
 
 def upsert(pt: PlanTemplate) -> PlanTemplate:

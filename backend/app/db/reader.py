@@ -235,6 +235,40 @@ def load_targets() -> list[Target]:
     return [t for p in load_projects() for t in p.targets]
 
 
+def load_profile_ids_conn(conn: sqlite3.Connection) -> list[str]:
+    """Return the distinct NINA profile ids present in the database (sorted).
+
+    Unions ``profileId`` across project, exposuretemplate, and profilepreference so a
+    profile that has templates but no projects (or is registered but otherwise empty)
+    still surfaces. Tolerant of missing tables/columns (schema drift).
+    """
+    conn.row_factory = sqlite3.Row
+    tables = introspect(conn)
+    ids: set[str] = set()
+    sources = [
+        (_find_table(tables, "project"), ("ProfileId", "profileId")),
+        (_find_table(tables, "exposuretemplate", "exposure_template"), ("profileId", "ProfileId")),
+        (_find_table(tables, "profilepreference"), ("profileId", "ProfileId")),
+    ]
+    for table, cols in sources:
+        if not table:
+            continue
+        for r in conn.execute(f'SELECT * FROM "{table}"'):
+            pid = _row_get(r, *cols)
+            if pid:
+                ids.add(str(pid))
+    return sorted(ids)
+
+
+def load_profile_ids() -> list[str]:
+    """Distinct profile ids from the working copy (empty when no DB is loaded)."""
+    wc = get_working_copy()
+    if wc is None:
+        return []
+    with connect_readonly(wc) as conn:
+        return load_profile_ids_conn(conn)
+
+
 def schema_info() -> SchemaInfo:
     from ..config import find_source_db
 
