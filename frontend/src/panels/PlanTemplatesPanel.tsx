@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ExposureTemplate, PlanGroup, PlanGroupInput } from "../api";
+import type { ExposureTemplate, PlanTemplate, PlanTemplateInput } from "../api";
 import { templateLabel } from "../templateLabel";
 
 interface DraftItem {
@@ -9,18 +9,18 @@ interface DraftItem {
 
 interface Props {
   templates: ExposureTemplate[];
-  groups: PlanGroup[];
-  onCreate: (g: PlanGroupInput) => Promise<PlanGroup>;
-  onUpdate: (g: PlanGroup) => Promise<PlanGroup>;
+  planTemplates: PlanTemplate[];
+  onCreate: (pt: PlanTemplateInput) => Promise<PlanTemplate>;
+  onUpdate: (pt: PlanTemplate) => Promise<PlanTemplate>;
   onDelete: (id: string) => Promise<void>;
   onRequestNewTemplate: () => Promise<ExposureTemplate | null>;
 }
 
-/** Manage reusable exposure plan groups (qiz.1 Stage 3): a named bundle of
- * template + frame-count rows the Project builder can apply in one pick. */
-export default function PlanGroupsPanel({
+/** Manage reusable exposure plan templates (qiz.1 Stage 3): a named bundle of
+ * exposure-template + frame-count rows the Project builder can apply in one pick. */
+export default function PlanTemplatesPanel({
   templates,
-  groups,
+  planTemplates,
   onCreate,
   onUpdate,
   onDelete,
@@ -35,14 +35,14 @@ export default function PlanGroupsPanel({
   function load(id: string) {
     setSelectedId(id);
     setMsg(null);
-    const g = groups.find((x) => x.id === id);
-    if (!g) {
+    const pt = planTemplates.find((x) => x.id === id);
+    if (!pt) {
       setName("");
       setItems([]);
       return;
     }
-    setName(g.name);
-    setItems(g.items.map((it) => ({ templateId: it.exposure_template_id, desired: it.desired })));
+    setName(pt.name);
+    setItems(pt.items.map((it) => ({ templateId: it.exposure_template_id, desired: it.desired })));
   }
 
   function patchItem(i: number, patch: Partial<DraftItem>) {
@@ -95,22 +95,24 @@ export default function PlanGroupsPanel({
   }
 
   return (
-    <details className="plan-groups">
+    <details className="plan-templates">
       <summary>
-        <span className="eq-title">Plan groups</span>
-        {groups.length > 0 && <span className="eq-fov">{groups.length}</span>}
+        <span className="eq-title">Exposure plan templates</span>
+        {planTemplates.length > 0 && (
+          <span className="eq-fov">{planTemplates.length}</span>
+        )}
       </summary>
 
       <div className="eq-body">
         <select
-          className="plan-group-apply"
+          className="plan-template-apply"
           value={selectedId}
           onChange={(e) => load(e.target.value)}
         >
-          <option value="">＋ New group</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
+          <option value="">＋ New plan template</option>
+          {planTemplates.map((pt) => (
+            <option key={pt.id} value={pt.id}>
+              {pt.name}
             </option>
           ))}
         </select>
@@ -173,7 +175,7 @@ export default function PlanGroupsPanel({
             </div>
           ))}
           {!items.length && (
-            <div className="eq-readout warn">Add filters to this group.</div>
+            <div className="eq-readout warn">Add filters to this plan template.</div>
           )}
         </div>
 
@@ -188,10 +190,10 @@ export default function PlanGroupsPanel({
 
         <div className="eq-row">
           <button className="eq-save" disabled={!canSave} onClick={save}>
-            {busy ? "Saving…" : selectedId ? "Save group" : "Create group"}
+            {busy ? "Saving…" : selectedId ? "Save plan template" : "Create plan template"}
           </button>
           {selectedId && (
-            <button className="target-del" title="Delete group" onClick={remove}>
+            <button className="target-del" title="Delete plan template" onClick={remove}>
               🗑
             </button>
           )}

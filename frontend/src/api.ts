@@ -70,20 +70,20 @@ export interface ExposureTemplate {
   minutes_offset: number | null;
 }
 
-export interface PlanGroupItem {
+export interface PlanTemplateItem {
   exposure_template_id: number;
   desired: number;
 }
 
 /** A named, reusable bundle of templates + counts (e.g. "LRGB Dark Nebula").
  * App-local — no Target Scheduler table; expands into exposure plans on apply. */
-export interface PlanGroup {
+export interface PlanTemplate {
   id: string;
   name: string;
-  items: PlanGroupItem[];
+  items: PlanTemplateItem[];
 }
 
-export type PlanGroupInput = Omit<PlanGroup, "id"> & { id?: string };
+export type PlanTemplateInput = Omit<PlanTemplate, "id"> & { id?: string };
 
 /** Body for creating an exposure template (qiz.5). Only name/filter/profile are
  * required; omitted fields take NINA defaults on the backend. */
@@ -219,13 +219,13 @@ export const fetchExposureTemplates = () =>
   getJSON<ExposureTemplate[]>("/exposure-templates");
 export const createExposureTemplate = (input: ExposureTemplateInput) =>
   postWithDetail<ExposureTemplate>("/exposure-templates", input);
-export const fetchPlanGroups = () => getJSON<PlanGroup[]>("/plan-groups");
-export const createPlanGroup = (g: PlanGroupInput) =>
-  sendJSON<PlanGroup>("/plan-groups", "POST", g);
-export const updatePlanGroup = (g: PlanGroup) =>
-  sendJSON<PlanGroup>(`/plan-groups/${g.id}`, "PUT", g);
-export const deletePlanGroup = (id: string) =>
-  sendJSON<{ ok: boolean }>(`/plan-groups/${id}`, "DELETE");
+export const fetchPlanTemplates = () => getJSON<PlanTemplate[]>("/plan-templates");
+export const createPlanTemplate = (g: PlanTemplateInput) =>
+  sendJSON<PlanTemplate>("/plan-templates", "POST", g);
+export const updatePlanTemplate = (g: PlanTemplate) =>
+  sendJSON<PlanTemplate>(`/plan-templates/${g.id}`, "PUT", g);
+export const deletePlanTemplate = (id: string) =>
+  sendJSON<{ ok: boolean }>(`/plan-templates/${id}`, "DELETE");
 export const fetchEquipment = () => getJSON<Equipment[]>("/equipment");
 export const createEquipment = (e: EquipmentInput) =>
   sendJSON<Equipment>("/equipment", "POST", e);

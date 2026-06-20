@@ -118,7 +118,7 @@ export default function NewTemplateModal({ templates, profileId, onSubmit, onClo
         {templates.length > 0 && (
           <label className="eq-field">
             Base on
-            <select className="plan-group-apply" defaultValue="" onChange={(e) => baseOn(e.target.value)}>
+            <select className="plan-template-apply" defaultValue="" onChange={(e) => baseOn(e.target.value)}>
               <option value="">— blank —</option>
               {templates.map((t) => (
                 <option key={t.id} value={String(t.id)}>

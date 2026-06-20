@@ -352,12 +352,12 @@
   width: 100%;
 }
 
-/* Plan groups panel — shares the project-builder panel chrome */
-.plan-groups {
+/* Exposure plan templates panel — shares the project-builder panel chrome */
+.plan-templates {
   border-bottom: 1px solid var(--border);
   background: var(--panel-2);
 }
-.plan-groups > summary {
+.plan-templates > summary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -366,16 +366,16 @@
   user-select: none;
   list-style: none;
 }
-.plan-groups > summary::-webkit-details-marker {
+.plan-templates > summary::-webkit-details-marker {
   display: none;
 }
-.plan-groups .eq-fov {
+.plan-templates .eq-fov {
   color: #ffb300;
 }
-.plan-groups .eq-row button {
+.plan-templates .eq-row button {
   flex: 1;
 }
-.plan-group-apply {
+.plan-template-apply {
   width: 100%;
   background: var(--panel-2);
   color: var(--text);

@@ -1,4 +1,4 @@
-import type { ExposureTemplate, PlanGroup } from "../api";
+import type { ExposureTemplate, PlanTemplate } from "../api";
 import { templateLabel } from "../templateLabel";
 import type { FovBox, PlaceMode } from "../sky/AladinView";
 
@@ -42,8 +42,8 @@ interface Props {
   placeMode: PlaceMode;
   /** Existing exposure templates from the DB; one must be picked per plan. */
   templates: ExposureTemplate[];
-  /** Saved plan groups; applying one fills the exposure plans in a single pick. */
-  planGroups: PlanGroup[];
+  /** Saved exposure plan templates; applying one fills the plans in a single pick. */
+  planTemplates: PlanTemplate[];
   saving: boolean;
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
@@ -58,7 +58,7 @@ interface Props {
   onAddPlan: () => void;
   onPatchPlan: (id: string, patch: Partial<ExposurePlanDraft>) => void;
   onRemovePlan: (id: string) => void;
-  onApplyPlanGroup: (groupId: string) => void;
+  onApplyPlanTemplate: (planTemplateId: string) => void;
   /** Open the create-template modal; resolves to the new template (or null). */
   onRequestNewTemplate: () => Promise<ExposureTemplate | null>;
   onSave: () => void;
@@ -77,7 +77,7 @@ export default function ProjectBuilder({
   draft,
   placeMode,
   templates,
-  planGroups,
+  planTemplates,
   saving,
   saveResult,
   onNewProject,
@@ -92,7 +92,7 @@ export default function ProjectBuilder({
   onAddPlan,
   onPatchPlan,
   onRemovePlan,
-  onApplyPlanGroup,
+  onApplyPlanTemplate,
   onRequestNewTemplate,
   onSave,
 }: Props) {
@@ -308,20 +308,20 @@ export default function ProjectBuilder({
                 ＋
               </button>
             </div>
-            {planGroups.length > 0 && (
+            {planTemplates.length > 0 && (
               <select
-                className="plan-group-apply"
+                className="plan-template-apply"
                 value=""
-                title="Apply a saved plan group — fills the plans below in one pick"
+                title="Apply a saved exposure plan template — fills the plans below in one pick"
                 onChange={(e) => {
-                  if (e.target.value) onApplyPlanGroup(e.target.value);
+                  if (e.target.value) onApplyPlanTemplate(e.target.value);
                   e.target.value = "";
                 }}
               >
-                <option value="">Apply plan group…</option>
-                {planGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.items.length})
+                <option value="">Apply plan template…</option>
+                {planTemplates.map((pt) => (
+                  <option key={pt.id} value={pt.id}>
+                    {pt.name} ({pt.items.length})
                   </option>
                 ))}
               </select>

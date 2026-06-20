@@ -1,104 +1,64 @@
 # TS Assistant
 
-A companion app for NINA's **Target Scheduler** plugin that makes managing
-projects, targets, and mosaics far easier than the in-NINA tree editor — with a
-real, draggable sky view powered by [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/)
-and HiPS surveys (including the **NSNS** narrowband surveys you get in
-Stellarium).
+TS Assistant is a companion app for the **Target Scheduler** plugin in
+[NINA](https://nighttime-imaging.eu/). It gives you a fast, visual way to look at
+your imaging projects and to plan new ones — on a real, draggable sky map instead
+of NINA's nested tree editor.
 
-You point it at a Target Scheduler database, see all your projects and targets
-plotted on the sky, switch between survey imagery, and frame single pointings or
-multi-panel mosaics against your rig's real field of view — all without touching
-the original database.
+You point it at your Target Scheduler database and it shows every project and
+target plotted on the sky, over your choice of survey imagery. You can frame a
+single target or a multi-panel mosaic against your telescope and camera's actual
+field of view, then build a new project — targets, mosaic panels and exposure
+plans — and save it, ready to import into NINA.
 
-> **Status:** read-only sky overview, equipment/FOV + mosaic framing, **and**
-> project creation — you can now build a project and **save** it (exported to a
-> staging Target Scheduler database you then import into NINA). Direct writes to
-> your live database are intentionally not exposed. See
-> [Known gaps & limitations](#known-gaps--limitations).
+Your existing database is never modified. New projects are written to a separate
+file that you import into NINA yourself, so there's no risk to your real data.
 
-## What it does today
+## Features
 
-- **Browse your scheduler.** Lists every project and its targets (with nested
-  exposure plans), read straight from a copy of your `schedulerdb.sqlite`.
-- **Plot targets on the sky.** Click any target in the sidebar to center the
-  Aladin Lite view on it.
-- **Switch survey imagery.** DSS2 color (all-sky default), DSS2 NIR, Mellinger
-  wide-field, and the full set of **NSNS DR0.2** narrowband composites
-  (OHS, Hα, [OIII], [SII], RGB) plus the NSNS DR0.1 true-color layer.
-- **Label sky highlights.** An optional **Named objects** overlay labels and
-  circles several hundred well-known deep-sky objects (the Messier and Caldwell
-  catalogs, IC highlights, Sharpless HII regions, large supernova remnants, and a
-  few featured NGC showpieces) sized to their real angular extent. It's
-  zoom-aware — a wide field shows only the largest objects; zoom in to reveal
-  progressively smaller ones.
-- **Define equipment / field of view.** Create rig profiles (pixel size, sensor
-  dimensions, focal length, corrector/reducer factor); the app computes plate
-  scale and FOV and overlays the FOV box on the sky.
-- **Draft projects, single targets, and mosaics.** A **project** is the top-tier
-  artifact and holds one or more **targets**. Each target has a **panes (N×M)**
-  count: 1×1 is an individual pointing, anything larger is a mosaic. Per target
-  you set panes, overlap (only when it's a mosaic), and rotation, position it on
-  the sky, and read off the total coverage area. The panel grid is drawn live on
-  the sky dome.
-- **Create projects (save / export).** Add one or more exposure plans — each
-  picks one of your existing Target Scheduler **exposure templates** and a desired
-  frame count — then **Save**. Each framed mosaic is expanded into per-pane targets
-  and written as a Project + Targets + ExposurePlans. The write goes to a
-  **staging** Target Scheduler database (`data/export/`) for you to import into
-  NINA; it's additive-only, auto-backed-up, and undoable, and never touches your
-  live database.
-- **Reuse plan groups.** Save a named bundle of exposure plans (a "plan group"
-  like *LRGB Dark Nebula* or *SHO Bright Target*) once, then apply it to any
-  project's targets in a single pick. Plan groups are a TS-Assistant convenience,
-  stored app-side — they expand into ordinary exposure plans when you save.
+- **Visual sky map** of all your projects and targets, powered by
+  [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/). Click any target to
+  centre on it.
+- **Multiple sky surveys**, including DSS2 colour, Mellinger wide-field, and the
+  **NSNS** narrowband surveys (Hα, [OIII], [SII] and colour composites) familiar
+  from Stellarium.
+- **Named-object overlay** that labels and circles several hundred well-known
+  deep-sky objects (Messier, Caldwell, IC, Sharpless nebulae, large supernova
+  remnants and more), sized to their real extent.
+- **Field-of-view preview** from your own equipment: enter your camera and optics
+  and TS Assistant draws your true frame on the sky.
+- **Mosaic planning**: lay out an N×M grid of panels with adjustable overlap and
+  rotation, or just drag a box over a region and let it work out the panels.
+- **Project builder**: create projects with one or more targets and exposure
+  plans, then save them for import into NINA.
+- **Reusable exposure plan templates** so you can apply a favourite filter/exposure
+  recipe to a new target in one click.
 
-## Architecture
+## Requirements
 
-- **backend/** — Python + FastAPI. Reads a *copy* of `schedulerdb.sqlite`
-  read-only, introspects the real schema, and serves projects/targets, the HiPS
-  survey catalog, and equipment profiles as JSON. The source database is never
-  modified; created projects are written to a separate **staging** database.
-- **frontend/** — Vite + React + TypeScript. Aladin Lite sky view, survey
-  switcher, named-object overlay, equipment panel, plan-groups panel,
-  project/mosaic builder, and a project/target browser with click-to-center.
+- **Python 3.11+** and [uv](https://docs.astral.sh/uv/) (for the backend).
+- **Node.js** (for the frontend).
+- A NINA **Target Scheduler** database (`schedulerdb.sqlite`). On the NINA machine
+  this is usually at `%localappdata%\NINA\SchedulerPlugin\schedulerdb.sqlite`.
 
-```
-Target Scheduler db  ──copy(ro)──▶  backend (FastAPI)
-                                      │  /api/projects, /api/surveys,
-                                      │  /api/equipment, /api/schema, /api/export
-                                      ▼
-                          frontend (React + Aladin Lite)
-                                      │  Save
-                                      ▼
-                          staging db (data/export/) ──import──▶ NINA
-```
+## Installation & running
 
-Equipment profiles and plan groups are **app-local data** (stored in
-`data/equipment.json` and `data/plan_groups.json`), *not* in your Target Scheduler
-database.
+TS Assistant has two parts that run side by side: a backend (the API) and a
+frontend (the web interface). Start both.
 
-## Quick start
+### 1. Point it at your database
 
-### 1. Provide a database
-
-Copy a Target Scheduler `schedulerdb.sqlite` into `sample_database/` (default
-location on the NINA box:
-`%localappdata%\NINA\SchedulerPlugin\schedulerdb.sqlite`). Or point at one
-explicitly:
+Copy your `schedulerdb.sqlite` into the `sample_database/` folder, **or** set an
+environment variable to its full path:
 
 ```bash
 export TS_ASSISTANT_DB=/path/to/schedulerdb.sqlite
 ```
 
-If `TS_ASSISTANT_DB` is set it wins; otherwise the first `*.sqlite` / `*.sqlite3`
-/ `*.db` file found in `sample_database/` is used. The app starts fine with **no**
-database (the UI just shows "no database loaded") so you can wire it up first.
+The app still starts without a database — the interface just shows "no database
+loaded" until you provide one.
 
-### 2. Backend
-
-Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/). Binds `0.0.0.0:8008`
-so it's reachable on the LAN.
+### 2. Start the backend
 
 ```bash
 cd backend
@@ -106,211 +66,124 @@ uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
 ```
 
-Inspect the real schema at any time (regenerates `../SCHEMA.md`):
+This serves the API on port **8008**, reachable from other machines on your
+network.
 
-```bash
-uv run python -m app.db.introspect
-```
-
-### 3. Frontend
-
-Requires Node.js. Also binds `0.0.0.0`.
+### 3. Start the frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev          # http://localhost:5173 (or http://<server-ip>:5173)
+npm run dev
 ```
 
-Open <http://localhost:5173> (or `http://<server-ip>:5173` from another machine).
-Pick a survey (try **NSNS Hα + continuum** for a northern target), and click a
-target in the sidebar to center the sky on it. The frontend auto-targets the
-backend at `http://<same-host>:8008`; override with `VITE_API_BASE` if the
-backend lives elsewhere.
+Then open **<http://localhost:5173>** (or `http://<server-ip>:5173` from another
+computer on your network). The interface finds the backend automatically on the
+same host.
 
-## Using the app
+## Using TS Assistant
 
-- **Survey** picker (top bar) switches the HiPS base layer. NSNS layers only
-  cover Dec ≳ −20°, so DSS2 color is the all-sky default.
-- **FOV boxes** toggle (top bar) shows/hides the rig field-of-view overlay.
-- **Named objects** toggle (top bar, off by default) shows/hides the deep-sky
-  highlight overlay. Intended flow: toggle it on, then zoom to your region —
-  smaller objects appear as you zoom in.
-- **Equipment** panel (sidebar): pick or create a rig. Edits show a live plate
-  scale + FOV readout and update the on-sky FOV box. Profiles persist via the
-  backend (`data/equipment.json`).
-- **Plan groups** panel (sidebar): create, edit, or delete named, reusable bundles
-  of exposure plans (each row = a Select-Exposure-Template pick + a frame count).
-  Groups are saved app-side (`data/plan_groups.json`) and can be applied to a
-  project in one pick (see below).
-- **Project** panel (sidebar): start a new project draft (it begins with a single
-  1×1 target at the view center), add more targets, and for each target set
-  columns/rows (panes), overlap % (mosaics only), and rotation. Position a target
-  using either placement mode:
-  - **Place / move** — click/drag a center point (resolve an object by name first
-    with Aladin's built-in search bar, or use **Center here** to snap to the
-    current view center).
-  - **Cover area** — drag a box over the region you want imaged; the target's
-    panes auto-divide to **fully cover** that area at the current rig FOV and
-    overlap, adopting the dragged box's center, size, and orientation (if the
-    Aladin view is rotated, the grid tilts to match). cols/rows stay editable
-    afterward.
+The top bar holds the sky-view options; the left sidebar holds your equipment,
+exposure plan templates, the project builder, and the list of existing projects.
 
-  The coverage readout shows the overall framed area. To save the project, add at
-  least one **Exposure plan** (the ＋ button adds a row), or use the **Apply plan
-  group…** dropdown to fill the plans from a saved group in one pick (still
-  editable afterward). Each plan row is a required **Select Exposure Template**
-  dropdown — listing your existing Target Scheduler templates, labelled like
-  `name · filter · 900s · Gain: 56` — plus a desired frame count. The filter and
-  sub-exposure come from the chosen template, so there is no free-text filter or
-  manual exposure entry. (The NINA profile is seeded
-  automatically from your existing projects; there is no profile field to fill.)
-  The **Save to database** button enables once the project has a name, a target,
-  and an exposure plan with a template selected; saving expands each mosaic into
-  per-pane targets and writes them to a staging database via `POST /api/export`.
-  The saved project appears in the list and on the sky for the session — note it
-  is **session-local and disappears on reload** (reads come from your source
-  database copy, not the staging export; see [Known gaps](#known-gaps--limitations)).
-- **Projects** panel (sidebar): the read-only list of existing projects/targets
-  from the database; click a target to center on it.
+### Choosing imagery
 
-## HTTP API
+Use the **Survey** picker to switch the background sky imagery. DSS2 colour is the
+all-sky default. The NSNS narrowband surveys only cover the northern sky (roughly
+declination −20° and above) — outside that range they appear blank, so use DSS2 or
+Mellinger for southern targets.
 
-All endpoints are under `/api`:
+### Showing your field of view
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Liveness + whether a source DB was found. |
-| GET | `/projects` | Projects with nested targets and exposure plans. |
-| GET | `/targets` | Flat list of all targets (convenience for overlays). |
-| GET | `/schema` | Table names + row counts of the working copy. |
-| GET | `/surveys` | HiPS survey catalog offered by the sky view. |
-| GET | `/exposure-templates` | The user's existing Target Scheduler exposure templates (read-only), offered when building exposure plans. |
-| GET | `/equipment` | Equipment profiles (with computed FOV). |
-| POST | `/equipment` | Create a profile (server mints the id). |
-| PUT | `/equipment/{id}` | Update a profile. |
-| DELETE | `/equipment/{id}` | Delete a profile. |
-| GET | `/plan-groups` | App-local reusable exposure-plan groups. |
-| POST | `/plan-groups` | Create a plan group. |
-| PUT | `/plan-groups/{id}` | Update a plan group. |
-| DELETE | `/plan-groups/{id}` | Delete a plan group. |
-| POST | `/export` | Additively write a project + targets + exposure plans to a **staging** copy (`data/export/`), after validation and an automatic backup. Returns an operation summary (`operation_id`, `backup_path`, `project_id`, `target_ids`, counts). |
-| POST | `/export/{operation_id}/undo` | Remove exactly the rows a previous export added (refused if any have captured progress). |
+In the **Equipment** panel, create a profile for your rig: pixel size, sensor
+width and height, focal length, and an optional reducer/Barlow factor. TS
+Assistant calculates your image scale and field of view and draws your frame on
+the sky. Use the **FOV boxes** toggle in the top bar to show or hide it. Your
+equipment profiles are saved between sessions.
 
-The Project panel's **Save to database** button posts to `POST /api/export`.
-Writes target a safe staging copy under `data/export/`, never the live Target
-Scheduler database; live writes are env-gated (`TS_ASSISTANT_ALLOW_LIVE_WRITE`)
-and not exposed over HTTP.
+### Labelling well-known objects
 
-Read-model notes: RA is stored in **hours** in the Target Scheduler DB and
-converted to degrees (×15) by the reader; Dec is degrees. Project `state` and
-target `epochCode` integer enums are decoded to labels. The reader is tolerant of
-missing columns / schema drift across Target Scheduler versions.
+Turn on the **Named objects** toggle (top bar) to overlay labelled circles for
+famous deep-sky objects. It's zoom-aware: zoomed out you see only the largest
+objects; as you zoom in, smaller ones appear. This is handy for orienting yourself
+and finding framing targets.
 
-## Safety model
+### Building a project
 
-Reads operate on a **copy** of the database (snapshotted into `data/working/`),
-opened in SQLite read-only URI mode (`?mode=ro`). The working copy is
-re-snapshotted from the source on each read, so changes you make in NINA show up
-on the next request. The reader never writes to your source database.
+Open the **Project** panel and start a new project. A project holds one or more
+**targets**, and each target is either a single pointing or a mosaic:
 
-The export path (mh3.4, `POST /api/export`) writes only to a separate **staging
-copy** under `data/export/` — never your live Target Scheduler database — and is
-deliberately **additive-only**: it inserts a new project with its targets and
-exposure plans and never modifies or deletes existing rows. Every export is
-preceded by an automatic timestamped backup and is undoable
-(`POST /api/export/{operation_id}/undo`). Direct writes to the live database exist
-in the writer but are gated behind the `TS_ASSISTANT_ALLOW_LIVE_WRITE` environment
-variable and are not exposed via the API or UI.
+- Set the number of **panes** (columns × rows). 1×1 is a single frame; anything
+  larger is a mosaic, with an adjustable **overlap** between panels.
+- Set the **rotation** to match how you'll frame the field.
+- Position the target on the sky in one of two ways:
+  - **Place / move** — click or drag to set the centre. (Tip: use Aladin's
+    built-in search bar to jump to an object by name first, or **Center here** to
+    use the current view.)
+  - **Cover area** — drag a box over the region you want to image and TS Assistant
+    divides it into enough panels to cover it at your current field of view.
 
-> CORS is open to all origins by design — this is a local, single-user tool with
-> no auth or cookies, intended to be reachable across your LAN.
+A readout shows the total area your framing covers.
 
-## Tests
+### Adding exposure plans
 
-```bash
-cd backend && uv run pytest      # reader/introspection + FOV math against fixtures
-```
+Each project needs at least one **exposure plan**. A plan is a **Select Exposure
+Template** dropdown (your existing Target Scheduler templates — the filter and
+exposure time come from the template) plus the number of frames you want.
 
-The backend tests cover the read layer (against a schema-faithful fixture
-database built in `tests/make_fixture.py`) and the FOV/plate-scale computation.
-The frontend has no automated test suite yet; the `frontend/*.mjs` files are
-local Playwright verification scratch (gitignored).
+- To reuse a saved recipe, use **Apply plan template…** to fill in the plans in one
+  click (you can still adjust them afterwards).
+- If you need a template that doesn't exist yet, choose **＋ New template…** at the
+  bottom of the dropdown. A small form lets you set the essentials (name, filter,
+  gain, offset, binning, exposure), with an **Advanced options** section for the
+  rest and a **Base on existing template** option to copy an existing one as a
+  starting point.
 
-## Maintaining the named-object catalog
+### Reusing exposure plans (plan templates)
 
-The **Named objects** overlay is driven by a committed, bundled catalog
-(`frontend/src/sky/skyObjects.generated.json`) so it works offline and renders
-deterministically — **end users never need to regenerate it.**
+The **Exposure plan templates** panel lets you save a named bundle of exposure plans
+— for example "LRGB Dark Nebula" or "SHO Bright Target" — and reuse it across projects
+via the **Apply plan template…** option above. Exposure plan templates are a TS
+Assistant convenience and are saved between sessions.
 
-If you want to extend or refresh the catalog, regenerate it from authoritative
-sources:
+### Saving a project
 
-```bash
-python3 scripts/gen_named_objects.py    # stdlib only; needs outbound HTTPS
-```
+When the project has a name, at least one target, and at least one exposure plan,
+the **Save to database** button becomes available. Saving writes the project (with
+every mosaic expanded into individual panel targets) to a **staging** database
+file in `data/export/`. Import that file into NINA to add the project to your
+scheduler.
 
-The generator pulls coordinates and angular sizes from **OpenNGC** (Messier /
-Caldwell / IC) and **VizieR/CDS** (`VII/20` Sharpless, `VII/284` Green supernova
-remnants) — nothing is hand-typed — and writes the JSON the frontend imports.
-Tunable knobs at the top of the script control what's included: the `IC_MIN` /
-`SH2_MIN` / `SNR_MIN` minimum-size thresholds, plus `MESSIER_EXTRA` and
-`FEATURED_NGC` for explicit additions. (Adjusting the thresholds changes the
-object count, so the catalog size is intentionally not pinned in these docs.)
+Saving never touches your original database. Each save is written additively and
+an automatic backup is taken first.
 
-## Known gaps & limitations
+## Configuration
 
-These are the things that are **not** done or that may surprise you. Tracked in
-more detail in the `.beads/` issue tracker (`br ready`, `br list --status=open`).
+| Setting | What it does |
+|---|---|
+| `TS_ASSISTANT_DB` | Full path to your Target Scheduler database. If unset, the first database file in `sample_database/` is used. |
+| `VITE_API_BASE` | Set this for the frontend only if the backend runs on a different host/port than the default (`http://<same-host>:8008`). |
+| Backend port | Passed to `uvicorn` with `--port` (default `8008`). |
+| Frontend port | The dev server defaults to `5173`. |
 
-- **Saved projects are session-local until imported.** A project you Save shows up
-  in the list and on the sky for the current session, but **disappears on reload**:
-  it's written to the staging export database (`data/export/`), while the read path
-  loads only your source database copy. To make it permanent you import the staging
-  database into NINA. Persisting created projects across reloads is tracked as bead
-  `2ij`.
-- **Save targets a staging database, not your live one.** Saving produces a staging
-  Target Scheduler DB you import into NINA, rather than writing into the database
-  the app read from. Direct live writes exist in the backend but are gated behind
-  `TS_ASSISTANT_ALLOW_LIVE_WRITE` and not exposed in the API or UI.
-- **Limited exposure-template / rule-weight editing.** When building a project you
-  can reference your existing Target Scheduler exposure templates in a plan
-  (`qiz.1`) and bundle plans into reusable plan groups (`759`), but you cannot yet
-  **create** new templates from the app (`qiz.5`, next) or tune rule weights.
-  Exposure plans on existing projects remain read-only.
-- **Target search is Aladin's, by design.** You resolve objects by name via Aladin
-  Lite's built-in Simbad search bar (plus the named-objects overlay and
-  click/center to position). A custom TS-Assistant search box was considered and
-  deliberately dropped (`qiz.4`) since Aladin already covers it.
-- **NSNS survey coverage.** All NSNS narrowband layers only cover Dec ≳ −20°;
-  outside that band they render empty. Use DSS2/Mellinger for the southern sky.
-- **Equipment store is app-local and single-user.** Profiles live in
-  `data/equipment.json` with no locking; concurrent editors can clobber each
-  other.
-- **Working copy refreshes every request.** Each API read re-copies the source
-  database into `data/working/`. This is fine for typical scheduler DBs but is
-  unoptimized for very large databases.
+## Good to know
 
-## Roadmap
+- **Saved projects are staged, not imported automatically.** A project you save
+  appears in the app for the current session, but it lives in the staging file in
+  `data/export/` — it won't reappear after a reload until you import it into NINA.
+- **This is a local, single-user tool.** It has no login and is meant to run on
+  your own machine or local network. Don't expose it to the public internet.
+- **Editing existing projects and templates isn't supported yet** — you can create
+  new ones, and reference or duplicate existing templates, but not change or delete
+  the ones already in your database.
 
-- **Read-only sky overview** *(done)* — list projects/targets, project them on
-  the sky dome, switch HiPS surveys.
-- **P2 — FOV & mosaic framing** *(done)* — equipment/FOV definition +
-  draw/position/rotate a mosaic grid, plus coverage-area framing (drag a region →
-  auto-divide into rig-FOV panels).
-- **P3 — Write / export path** *(done)* — schema round-trip gating test (`mh3.1`),
-  transactional additive writer with backup + undo (`mh3.2`), pre-write validation
-  (`mh3.3`), the export API (`mh3.4`), and the create-Project-from-mosaic Save UI
-  (`mh3.5`) are all merged. Save → staging export, end-to-end.
-- **P4 — Exposure plans, templates & polish** *(in progress)* — done so far:
-  reference existing exposure templates in a plan (`qiz.1`) and reusable app-side
-  exposure plan groups (`759`). Still to come: create templates (`qiz.5`, next),
-  editing existing Draft projects with a staging-vs-live write toggle (`o2c`, which
-  also persists created projects across reloads, resolving `2ij`), a top-level NINA
-  profile selector (`bg0`), rule weights, and UX cleanup.
+## For developers
 
----
-
-*This README is maintained by an agent (TurquoiseSpring). The companion schema
-reference is auto-generated in [`SCHEMA.md`](./SCHEMA.md). Agent/issue workflow
-notes are in [`AGENTS.md`](./AGENTS.md).*
+- The backend is FastAPI; interactive API docs are at
+  `http://localhost:8008/docs` while it's running.
+- Run the backend tests with `cd backend && uv run pytest`.
+- `SCHEMA.md` is a generated reference of the Target Scheduler database schema
+  (regenerate with `uv run python -m app.db.introspect`).
+- The named-object overlay ships with a prebuilt catalog, so it works offline;
+  `scripts/gen_named_objects.py` can regenerate it from public catalogs if you
+  want to extend it.

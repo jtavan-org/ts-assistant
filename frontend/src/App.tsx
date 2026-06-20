@@ -2,20 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createExport,
   createExposureTemplate,
-  createPlanGroup,
-  deletePlanGroup,
+  createPlanTemplate,
+  deletePlanTemplate,
   fetchExposureTemplates,
   fetchHealth,
-  fetchPlanGroups,
+  fetchPlanTemplates,
   fetchProjects,
   fetchSurveys,
-  updatePlanGroup,
+  updatePlanTemplate,
   type ExportTargetInput,
   type ExposureTemplate,
   type ExposureTemplateInput,
   type Health,
-  type PlanGroup,
-  type PlanGroupInput,
+  type PlanTemplate,
+  type PlanTemplateInput,
   type Project,
   type Survey,
   type Target,
@@ -30,7 +30,7 @@ import AladinView, {
 } from "./sky/AladinView";
 import ProjectList from "./panels/ProjectList";
 import EquipmentPanel from "./panels/EquipmentPanel";
-import PlanGroupsPanel from "./panels/PlanGroupsPanel";
+import PlanTemplatesPanel from "./panels/PlanTemplatesPanel";
 import NewTemplateModal from "./panels/NewTemplateModal";
 import ProjectBuilder, {
   type ProjectDraft,
@@ -53,7 +53,7 @@ export default function App() {
   const [surveyId, setSurveyId] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [templates, setTemplates] = useState<ExposureTemplate[]>([]);
-  const [planGroups, setPlanGroups] = useState<PlanGroup[]>([]);
+  const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
   const [focus, setFocus] = useState<SkyFocus | null>(null);
@@ -85,8 +85,8 @@ export default function App() {
     fetchExposureTemplates()
       .then(setTemplates)
       .catch(() => {});
-    fetchPlanGroups()
-      .then(setPlanGroups)
+    fetchPlanTemplates()
+      .then(setPlanTemplates)
       .catch(() => {});
   }, []);
 
@@ -263,20 +263,20 @@ export default function App() {
     );
   }
 
-  // Plan groups (qiz.6) — app-side named bundles of template+count.
-  async function createGroup(g: PlanGroupInput): Promise<PlanGroup> {
-    const res = await createPlanGroup(g);
-    setPlanGroups((prev) => [...prev, res]);
+  // Exposure plan templates (qiz.6) — app-side named bundles of template+count.
+  async function onCreatePlanTemplate(g: PlanTemplateInput): Promise<PlanTemplate> {
+    const res = await createPlanTemplate(g);
+    setPlanTemplates((prev) => [...prev, res]);
     return res;
   }
-  async function updateGroup(g: PlanGroup): Promise<PlanGroup> {
-    const res = await updatePlanGroup(g);
-    setPlanGroups((prev) => prev.map((x) => (x.id === res.id ? res : x)));
+  async function onUpdatePlanTemplate(g: PlanTemplate): Promise<PlanTemplate> {
+    const res = await updatePlanTemplate(g);
+    setPlanTemplates((prev) => prev.map((x) => (x.id === res.id ? res : x)));
     return res;
   }
-  async function deleteGroup(id: string): Promise<void> {
-    await deletePlanGroup(id);
-    setPlanGroups((prev) => prev.filter((x) => x.id !== id));
+  async function onDeletePlanTemplate(id: string): Promise<void> {
+    await deletePlanTemplate(id);
+    setPlanTemplates((prev) => prev.filter((x) => x.id !== id));
   }
 
   // Create-template modal (qiz.5), promise-based so a picker can await the result.
@@ -299,14 +299,14 @@ export default function App() {
     templateResolverRef.current = null;
   }
 
-  // Apply a group: replace the draft's exposure plans with the group's items,
-  // resolving each template for its filter/exposure display.
-  function applyPlanGroup(groupId: string) {
-    const g = planGroups.find((x) => x.id === groupId);
-    if (!g) return;
+  // Apply a plan template: replace the draft's exposure plans with its items,
+  // resolving each exposure template for its filter/exposure display.
+  function applyPlanTemplate(planTemplateId: string) {
+    const pt = planTemplates.find((x) => x.id === planTemplateId);
+    if (!pt) return;
     setProjectDraft((d) => {
       if (!d) return d;
-      const plans = g.items.map((it) => {
+      const plans = pt.items.map((it) => {
         const t = templates.find((x) => x.id === it.exposure_template_id);
         return {
           id: newTargetId(),
@@ -500,7 +500,7 @@ export default function App() {
             draft={projectDraft}
             placeMode={placeMode}
             templates={templates}
-            planGroups={planGroups}
+            planTemplates={planTemplates}
             saving={saving}
             saveResult={saveResult}
             onNewProject={newProject}
@@ -523,16 +523,16 @@ export default function App() {
             onAddPlan={addPlan}
             onPatchPlan={patchPlan}
             onRemovePlan={removePlan}
-            onApplyPlanGroup={applyPlanGroup}
+            onApplyPlanTemplate={applyPlanTemplate}
             onRequestNewTemplate={requestNewTemplate}
             onSave={saveProject}
           />
-          <PlanGroupsPanel
+          <PlanTemplatesPanel
             templates={templates}
-            groups={planGroups}
-            onCreate={createGroup}
-            onUpdate={updateGroup}
-            onDelete={deleteGroup}
+            planTemplates={planTemplates}
+            onCreate={onCreatePlanTemplate}
+            onUpdate={onUpdatePlanTemplate}
+            onDelete={onDeletePlanTemplate}
             onRequestNewTemplate={requestNewTemplate}
           />
           <ProjectList
