@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import backup, export, ops
+from app.db.writer import create_scheduler_db
 from app.main import app
 
 PROFILE = "11111111-1111-1111-1111-111111111111"
@@ -15,10 +16,11 @@ PROFILE = "11111111-1111-1111-1111-111111111111"
 def client(tmp_path, monkeypatch):
     bdir = tmp_path / "backups"
     bdir.mkdir()
+    db = tmp_path / "scheduler.sqlite"
+    create_scheduler_db(db).close()  # a valid empty canonical DB to write in place
     monkeypatch.setattr(backup, "BACKUP_DIR", bdir)
     monkeypatch.setattr(ops, "OPS_FILE", tmp_path / "ops.json")
-    monkeypatch.setattr(export, "EXPORT_DB", tmp_path / "export.sqlite")
-    monkeypatch.setattr(export, "find_source_db", lambda: None)  # seed an empty canonical DB
+    monkeypatch.setattr(export, "find_source_db", lambda: db)
     return TestClient(app)
 
 
@@ -51,12 +53,23 @@ def test_export_then_undo(client):
         "project": 1, "target": 1, "exposureplan": 2, "exposuretemplate": 2, "ruleweight": 8,
     }
     assert body["backup_path"]
-    assert body["target_db"].endswith("export.sqlite")
+    assert body["target_db"].endswith("scheduler.sqlite")
 
     op = body["operation_id"]
     u = client.post(f"/api/export/{op}/undo")
     assert u.status_code == 200, u.text
     assert u.json()["deleted"]["project"] == 1
+
+
+def test_export_then_delete(client):
+    created = client.post("/api/export", json=_payload()).json()
+    pid = created["project_id"]
+    r = client.delete(f"/api/export/{pid}")
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"]["project"] == 1
+    # gone from the project list
+    names = [p["name"] for p in client.get("/api/projects").json()]
+    assert "API Mosaic" not in names
 
 
 def test_export_rejects_blank_profile(client):

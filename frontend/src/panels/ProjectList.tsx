@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ExposurePlan, Project, Target } from "../api";
 
 interface Props {
@@ -6,6 +7,8 @@ interface Props {
   onSelectTarget: (t: Target) => void;
   /** Load a Draft, no-progress project into the builder for editing (o2c). */
   onEditProject: (p: Project) => void;
+  /** The project builder (New-project button / draft form), shown at the top. */
+  builder: ReactNode;
 }
 
 /** A project is safely editable when it's a Draft with no captured frames. The
@@ -52,6 +55,7 @@ export default function ProjectList({
   selectedTargetId,
   onSelectTarget,
   onEditProject,
+  builder,
 }: Props) {
   return (
     <details className="projects-panel" open>
@@ -59,6 +63,8 @@ export default function ProjectList({
         <span className="eq-title">Projects</span>
         {projects.length > 0 && <span className="count">{projects.length}</span>}
       </summary>
+
+      {builder}
 
       {!projects.length ? (
         <div className="panel-empty">

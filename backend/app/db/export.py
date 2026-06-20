@@ -8,8 +8,8 @@ safety path:
 
 Guarantees: only INSERTs; new rowid-alias Ids never collide; the whole thing is one
 transaction (provenance table + rows commit atomically with the data); on any failure
-the DB is left byte-unchanged. Writing to the *live* source DB is gated behind
-``TS_ASSISTANT_ALLOW_LIVE_WRITE``; the default target is a safe staging copy.
+the DB is left byte-unchanged. Writes operate in place on the configured Target
+Scheduler database, with a consistent backup taken before every write.
 """
 
 from __future__ import annotations
@@ -22,14 +22,8 @@ from typing import Callable
 
 from pydantic import BaseModel
 
-from ..config import (
-    EXPORT_DB,
-    allow_live_write,
-    ensure_dirs,
-    find_source_db,
-    integrity_check_enabled,
-)
-from .backup import backup_signature, consistent_copy, ensure_backup
+from ..config import find_source_db
+from .backup import backup_signature, ensure_backup
 from .ops import OpLogEntry, find_op, mark_status, record_op, set_target_state
 from .provenance import (
     ProvRow,
@@ -44,7 +38,7 @@ from .writer import (
     ExposureTemplateSpec,
     ProjectSpec,
     WriteResult,
-    create_scheduler_db,
+    delete_project as writer_delete_project,
     update_project as writer_update_project,
     write_exposure_template,
     write_project,
@@ -92,6 +86,13 @@ class ExportResult(BaseModel):
 
 class UndoResult(BaseModel):
     operation_id: str
+    target_db: str
+    backup_path: str
+    deleted: dict[str, int]
+
+
+class DeleteResult(BaseModel):
+    project_id: int
     target_db: str
     backup_path: str
     deleted: dict[str, int]
@@ -162,49 +163,17 @@ def _assert_additive(
                 raise ExportError(f"non-additive id reuse in {t}: Id {row_id} <= prior max {max_before[t]}")
 
 
-def _seed_export_db() -> Path:
-    ensure_dirs()
-    if not EXPORT_DB.exists():
-        source = find_source_db()
-        if source is not None and source.is_file():
-            consistent_copy(source, EXPORT_DB)  # NINA-importable clone, not the live file
-        else:
-            create_scheduler_db(EXPORT_DB).close()  # empty canonical DB
-    return EXPORT_DB
-
-
 def _resolve_target(target_db: str | Path | None) -> Path:
-    # Default target depends on the operating mode (o2c / bead j9t): LIVE writes the
-    # user's real DB directly; STAGING writes a safe copy. Mode is fixed at launch.
-    if target_db is None:
-        if allow_live_write():
-            source = find_source_db()
-            if source is None:
-                raise ExportError(
-                    "Live mode is enabled (TS_ASSISTANT_ALLOW_LIVE_WRITE=1) but no "
-                    "Target Scheduler database was found — set TS_ASSISTANT_DB or drop "
-                    "one into sample_database/."
-                )
-            return source  # read target == write target == the real DB
-        return _seed_export_db()  # safe staging copy
-    target = Path(target_db)
+    """The database to read/write in place: an explicit arg, else the configured DB."""
+    if target_db is not None:
+        return Path(target_db)
     source = find_source_db()
-    if source is not None and target.resolve() == source.resolve() and not allow_live_write():
+    if source is None:
         raise ExportError(
-            "refusing to write to the live Target Scheduler DB; "
-            "set TS_ASSISTANT_ALLOW_LIVE_WRITE=1 to allow live writes"
+            "no Target Scheduler database found — set TS_ASSISTANT_DB or drop one "
+            "into sample_database/."
         )
-    return target
-
-
-def _is_live_target(target: Path) -> bool:
-    """True when ``target`` is the user's real source DB (vs a staging copy).
-
-    Live writes get the stronger safety treatment: back up before *every* write
-    (window 0) with a WAL-consistent copy, and verify integrity before touching it.
-    """
-    source = find_source_db()
-    return source is not None and Path(target).resolve() == source.resolve()
+    return source
 
 
 def _busy_or_export_error(e: sqlite3.OperationalError) -> ExportError:
@@ -222,29 +191,25 @@ def export_project(
     spec: ProjectSpec,
     *,
     target_db: str | Path | None = None,
-    backup_window_min: int | None = None,
     validate: Callable[[sqlite3.Connection, ProjectSpec], None] | None = None,
     now: datetime | None = None,
 ) -> ExportResult:
     now = now or datetime.now(timezone.utc)
     validate = validate or default_validate
     target = _resolve_target(target_db)
-    live = _is_live_target(target)
-    window = 0 if live else backup_window_min  # live: back up before every write
 
-    backup = ensure_backup(target, window_min=window, now=now, live=live)
+    backup = ensure_backup(target, now=now)  # consistent restore point before the write
     operation_id = "op_" + uuid.uuid4().hex
 
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row  # introspect()/validate look up columns by name
     try:
         conn.execute("PRAGMA foreign_keys = ON")  # no-op inside a txn, so set first
-        # Verify integrity BEFORE taking the write lock, so a scan on a large live DB
-        # never blocks NINA mid-capture (live always; staging when env-enabled).
-        if live or integrity_check_enabled():
-            chk = conn.execute("PRAGMA quick_check").fetchone()[0]
-            if chk != "ok":
-                raise ExportError(f"quick_check failed before write: {chk}")
+        # Verify integrity BEFORE taking the write lock, so a scan never blocks NINA
+        # mid-capture.
+        chk = conn.execute("PRAGMA quick_check").fetchone()[0]
+        if chk != "ok":
+            raise ExportError(f"quick_check failed before write: {chk}")
         counts_before = _counts(conn)
         max_before = _max_ids(conn)
 
@@ -300,7 +265,6 @@ def create_exposure_template(
     spec: ExposureTemplateSpec,
     *,
     target_db: str | Path | None = None,
-    backup_window_min: int | None = None,
     validate: Callable[[sqlite3.Connection, ExposureTemplateSpec], None] | None = None,
     now: datetime | None = None,
 ) -> TemplateResult:
@@ -308,25 +272,22 @@ def create_exposure_template(
 
     Same backup + BEGIN IMMEDIATE + provenance + additive-assert wrapper as
     :func:`export_project`, but for a single INSERT. Provenanced, so the existing
-    :func:`undo_operation` removes it. Default target is the staging copy.
+    :func:`undo_operation` removes it.
     """
     now = now or datetime.now(timezone.utc)
     validate = validate or validate_exposure_template
     target = _resolve_target(target_db)
-    live = _is_live_target(target)
-    window = 0 if live else backup_window_min  # live: back up before every write
 
-    backup = ensure_backup(target, window_min=window, now=now, live=live)
+    backup = ensure_backup(target, now=now)  # consistent restore point before the write
     operation_id = "op_" + uuid.uuid4().hex
 
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON")
-        if live or integrity_check_enabled():  # verify before locking (don't block NINA)
-            chk = conn.execute("PRAGMA quick_check").fetchone()[0]
-            if chk != "ok":
-                raise ExportError(f"quick_check failed before write: {chk}")
+        chk = conn.execute("PRAGMA quick_check").fetchone()[0]  # verify before locking
+        if chk != "ok":
+            raise ExportError(f"quick_check failed before write: {chk}")
         count_before = conn.execute("SELECT COUNT(*) FROM exposuretemplate").fetchone()[0]
         max_before = conn.execute("SELECT COALESCE(MAX(Id), 0) FROM exposuretemplate").fetchone()[0]
 
@@ -461,7 +422,6 @@ def update_project(
     spec: ProjectSpec,
     *,
     target_db: str | Path | None = None,
-    backup_window_min: int | None = None,
     validate: Callable[[sqlite3.Connection, ProjectSpec], None] | None = None,
     now: datetime | None = None,
 ) -> ExportResult:
@@ -476,20 +436,17 @@ def update_project(
     now = now or datetime.now(timezone.utc)
     validate = validate or default_validate
     target = _resolve_target(target_db)
-    live = _is_live_target(target)
-    window = 0 if live else backup_window_min  # live: back up before every write
 
-    backup = ensure_backup(target, window_min=window, now=now, live=live)
+    backup = ensure_backup(target, now=now)  # consistent restore point before the write
     operation_id = "op_" + uuid.uuid4().hex
 
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA foreign_keys = ON")
-        if live or integrity_check_enabled():  # verify before locking (don't block NINA)
-            chk = conn.execute("PRAGMA quick_check").fetchone()[0]
-            if chk != "ok":
-                raise ExportError(f"quick_check failed before write: {chk}")
+        chk = conn.execute("PRAGMA quick_check").fetchone()[0]  # verify before locking
+        if chk != "ok":
+            raise ExportError(f"quick_check failed before write: {chk}")
 
         conn.execute("BEGIN IMMEDIATE")
         _assert_editable(conn, project_id)
@@ -537,6 +494,69 @@ def update_project(
     )
 
 
+def delete_project(
+    project_id: int,
+    *,
+    target_db: str | Path | None = None,
+    now: datetime | None = None,
+) -> DeleteResult:
+    """Delete an existing Draft project (and its rows) in place through the full safety
+    path. Same backup + BEGIN IMMEDIATE + integrity + FK-check wrapper as the writes;
+    refuses unless the project is editable (``_assert_editable``: Draft, no captured
+    progress, no custom cadence/override). The pre-delete backup is the recovery path.
+    """
+    now = now or datetime.now(timezone.utc)
+    target = _resolve_target(target_db)
+
+    backup = ensure_backup(target, now=now)  # consistent restore point before the delete
+    operation_id = "op_" + uuid.uuid4().hex
+
+    conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        chk = conn.execute("PRAGMA quick_check").fetchone()[0]  # verify before locking
+        if chk != "ok":
+            raise ExportError(f"quick_check failed before write: {chk}")
+
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_editable(conn, project_id)
+        deleted = writer_delete_project(conn, project_id)
+        fk = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if fk:
+            raise ExportError(f"foreign key violations: {fk[:5]}")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        conn.rollback()
+        raise _busy_or_export_error(e) from e
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    target_key = str(target.resolve())
+    set_target_state(target_key, last_seen_signature=backup_signature(target))
+    record_op(
+        OpLogEntry(
+            operation_id=operation_id,
+            written_at=now.isoformat(),
+            kind="delete",
+            target_db=target_key,
+            backup_path=backup.path,
+            status="committed",
+            project_guid=None,
+            counts=deleted,
+        )
+    )
+    return DeleteResult(
+        project_id=project_id,
+        target_db=target_key,
+        backup_path=backup.path,
+        deleted=deleted,
+    )
+
+
 def undo_operation(
     operation_id: str,
     *,
@@ -549,14 +569,9 @@ def undo_operation(
         raise ExportError(f"unknown operation {operation_id}")
     target = Path(target_db) if target_db else Path(op.target_db)  # type: ignore[union-attr]
 
-    source = find_source_db()
-    is_live = source is not None and target.resolve() == source.resolve()
-    if is_live and not allow_live_write():
-        raise ExportError("refusing to undo on the live DB; set TS_ASSISTANT_ALLOW_LIVE_WRITE=1")
-
-    # Undo is the only non-additive live op, so it gets the same backup-every-write
-    # (window 0) + WAL-consistent copy treatment as a live write.
-    backup = ensure_backup(target, window_min=(0 if is_live else None), now=now, live=is_live)
+    # Undo is non-additive (it deletes rows), so it gets the same consistent pre-write
+    # backup as any other write.
+    backup = ensure_backup(target, now=now)
     conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row  # introspect()/validate look up columns by name
     try:

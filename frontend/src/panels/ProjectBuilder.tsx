@@ -52,11 +52,11 @@ interface Props {
   saving: boolean;
   /** True when editing an existing project (o2c) rather than creating a new one. */
   editing: boolean;
-  /** True when the backend writes the real DB (live mode) vs a staging copy. */
-  liveMode: boolean;
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
   onDiscard: () => void;
+  /** Delete the project being edited (only meaningful when `editing`). */
+  onDelete: () => void;
   onRenameProject: (name: string) => void;
   onAddTarget: () => void;
   onSelectTarget: (id: string) => void;
@@ -92,10 +92,10 @@ export default function ProjectBuilder({
   planTemplates,
   saving,
   editing,
-  liveMode,
   saveResult,
   onNewProject,
   onDiscard,
+  onDelete,
   onRenameProject,
   onAddTarget,
   onSelectTarget,
@@ -135,16 +135,17 @@ export default function ProjectBuilder({
   }
 
   return (
-    <details className="project-builder" open>
-      <summary>
-        <span className="eq-title">Project</span>
-        {draft && editing && <span className="rw-edited">editing</span>}
-        {draft && (
+    // Rendered inside the "Projects" panel (no accordion of its own): the New-project
+    // button when idle, or the builder form when a draft is active.
+    <div className="project-builder">
+      {draft && (
+        <div className="pb-head">
+          <span className="eq-title">{editing ? "Editing project" : "New project"}</span>
           <span className="eq-fov">
             {draft.targets.length} target{draft.targets.length === 1 ? "" : "s"}
           </span>
-        )}
-      </summary>
+        </div>
+      )}
 
       <div className="eq-body">
         {!hasFov && (
@@ -206,7 +207,10 @@ export default function ProjectBuilder({
               <button onClick={onAddTarget} title="Add another target">
                 ＋ Add target
               </button>
-              <button onClick={onDiscard} title="Discard this project">
+              <button
+                onClick={editing ? onDelete : onDiscard}
+                title={editing ? "Delete this project" : "Discard this draft"}
+              >
                 🗑
               </button>
             </div>
@@ -428,9 +432,7 @@ export default function ProjectBuilder({
               onClick={onSave}
               title={
                 canSave
-                  ? liveMode
-                    ? "Write this project directly to your live Target Scheduler database"
-                    : "Write this project to a staging Target Scheduler database to import into NINA"
+                  ? "Write this project to your Target Scheduler database (a backup is taken first)"
                   : "Needs a name, a target, and an exposure plan with a template"
               }
             >
@@ -440,6 +442,16 @@ export default function ProjectBuilder({
                   ? "Save changes"
                   : "Save to database"}
             </button>
+            {editing && (
+              <button
+                className="eq-discard"
+                onClick={onDiscard}
+                disabled={saving}
+                title="Stop editing without saving your changes"
+              >
+                Discard changes
+              </button>
+            )}
             {saveResult && (
               <div className={saveResult.ok ? "eq-readout save-ok" : "eq-readout warn"}>
                 {saveResult.message}
@@ -448,6 +460,6 @@ export default function ProjectBuilder({
           </>
         )}
       </div>
-    </details>
+    </div>
   );
 }

@@ -122,26 +122,20 @@
 }
 
 /* Operating-mode banner (o2c / live mode) */
-.mode-banner {
+.db-banner {
   flex: 0 0 auto;
   padding: 5px 16px;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
   text-align: center;
-  border-bottom: 1px solid var(--border);
-}
-.mode-staging {
   background: var(--panel-2);
   color: var(--text-dim);
-  font-weight: 500;
+  border-bottom: 1px solid var(--border);
 }
-.mode-live {
-  background: #5c0d12;
-  color: #ffd9dc;
-  border-bottom-color: #ff6b6b;
+.db-banner strong {
+  color: var(--text);
+  font-weight: 600;
 }
-.mode-error {
+.db-error {
   background: #5c3a0d;
   color: #ffe9c2;
   border-bottom-color: #ffb454;
@@ -294,6 +288,22 @@
 .eq-save:disabled {
   background: var(--panel);
   color: var(--text-dim);
+  cursor: default;
+}
+.eq-discard {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+}
+.eq-discard:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.eq-discard:disabled {
+  opacity: 0.4;
   cursor: default;
 }
 .eq-readout.warn {
@@ -454,21 +464,15 @@
 }
 
 /* Project builder (mirrors the equipment panel) */
+/* Project builder: rendered inside the Projects panel (no accordion of its own). */
 .project-builder {
   border-bottom: 1px solid var(--border);
-  background: var(--panel-2);
 }
-.project-builder > summary {
+.pb-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-}
-.project-builder > summary::-webkit-details-marker {
-  display: none;
+  padding: 8px 12px 0;
 }
 .project-builder .eq-fov {
   color: #ffb300;

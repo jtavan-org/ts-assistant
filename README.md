@@ -9,13 +9,12 @@ You point it at your Target Scheduler database and it shows every project and
 target plotted on the sky, over your choice of survey imagery. You can frame a
 single target or a multi-panel mosaic against your telescope and camera's actual
 field of view, then build a new project — targets, mosaic panels and exposure
-plans — and save it, ready to import into NINA.
+plans — or edit an existing draft, and save it straight back to your database.
 
-By default, your existing database is never touched: new projects are written to a
-separate copy that you import into NINA yourself, so there's no risk to your real
-data. If you'd rather have changes applied directly, there's an optional **live
-mode** that reads and writes your real database (always taking a backup first).
-See [Operating modes](#operating-modes-staging-vs-live).
+TS Assistant works on your database **in place**, and takes a fresh backup before
+every change (kept in `data/backups/`), so your data is protected and any change is
+easy to roll back. It also refuses to write while NINA has the database open, so the
+two never collide. See [Your data and backups](#your-data-and-backups).
 
 ## Features
 
@@ -33,7 +32,10 @@ See [Operating modes](#operating-modes-staging-vs-live).
 - **Mosaic planning**: lay out an N×M grid of panels with adjustable overlap and
   rotation, or just drag a box over a region and let it work out the panels.
 - **Project builder**: create projects with one or more targets and exposure
-  plans, then save them for import into NINA.
+  plans — or **edit an existing draft project** — and save them straight to your
+  database.
+- **Per-profile scoping**: choose your NINA profile in the top bar and everything
+  below — projects, templates, equipment — is scoped to it.
 - **Reusable exposure plan templates** so you can apply a favourite filter/exposure
   recipe to a new target in one click.
 
@@ -100,7 +102,7 @@ optional — the steps above work just as well.
 
    At a minimum, set `TS_DB_DIR` to the folder that contains your
    `schedulerdb.sqlite` (or drop the database into `sample_database/` and leave
-   the default). To run in live mode, set `TS_ASSISTANT_ALLOW_LIVE_WRITE=1` here.
+   the default).
 
 2. Start it:
 
@@ -116,67 +118,44 @@ A few things worth knowing:
 - **Both ports are published** (5173 for the interface, 8008 for the API), because
   your browser talks to the API directly. Keep the backend on 8008 unless you know
   what you're changing.
-- **Your database folder is mounted in.** In staging mode it's only read; in live
-  mode it's read and written in place (add `:ro` after the mount in
-  `docker-compose.yml` if you want to force read-only in staging). Whichever mode
-  you pick works exactly as described below.
-- **Backups and working copies** live in `./data` next to the project, so they
-  survive restarts and are easy to grab if you ever need to restore one.
+- **Your database folder is mounted in** and is read and written in place (a backup
+  is taken before every change).
+- **Backups** live in `./data` next to the project, so they survive restarts and are
+  easy to grab if you ever need to restore one.
 - The container needs to write your database and its backups, so it runs as root
   inside the container. That's normal for a local tool you run yourself.
 
-## Operating modes: staging vs live
+## Your data and backups
 
-TS Assistant runs in one of two modes. The mode is chosen when you start the
-backend — there is no switch inside the app — so decide up front which one you
-want.
+TS Assistant reads and writes one database — the one you point it at — **in place**.
+Anything you save or edit takes effect immediately and is there when you reload.
 
-### Staging mode (default)
+Your safety net is automatic backups: **before every change, TS Assistant takes a
+consistent backup** of your database into `data/backups/` (older ones are pruned, but
+recent backups and everything from the last couple of weeks are kept). If you ever
+need to undo something by hand, those are full copies you can restore.
 
-This is what you get if you start the backend normally. TS Assistant reads from a
-private snapshot of your database and saves new projects into a **separate copy**
-at `data/export/schedulerdb-export.sqlite`. This copy is a full, NINA-importable
-clone of your database with your new project added — **your real database is never
-touched.**
+A couple of built-in guards keep things safe:
 
-The trade-off is that nothing you create takes effect automatically. To actually
-use a project you built, you put that copy back in place yourself — close NINA,
-then import the export file (or swap it in for your `schedulerdb.sqlite`). Until
-you do, anything you save shows up only for the current session and disappears when
-you reload the page.
-
-### Live mode
-
-Start the backend with the `TS_ASSISTANT_ALLOW_LIVE_WRITE=1` environment variable
-to enable live mode:
-
-```bash
-cd backend
-TS_ASSISTANT_ALLOW_LIVE_WRITE=1 uv run uvicorn app.main:app --host 0.0.0.0 --port 8008
-```
-
-In live mode TS Assistant reads and writes your **real** Target Scheduler database
-directly. Projects you create take effect immediately and persist across reloads —
-there's no separate file to import. Every write still takes an automatic backup
-first, and TS Assistant refuses to write while NINA has the database open (you'll
-get a clear "database busy" message instead). Live mode is off by default and is
-meant to be turned on deliberately.
-
-### Telling them apart
-
-A banner across the top of the page always shows the current mode:
-
-- **Staging mode** — a neutral banner: *"Staging mode — changes save to a separate
-  copy; import it into NINA to use them."*
-- **Live mode** — a red banner: *"● PRODUCTION — changes write directly to your
-  live Target Scheduler database."*
-- If live mode is requested but can't be used (for example, no database was found),
-  a warning banner explains what's wrong.
+- TS Assistant **won't write while NINA has the database open** — you'll get a clear
+  "database busy" message instead, so the two never step on each other. Close or pause
+  NINA's scheduler and try again.
+- A small banner across the top shows **which database file you're working on** and a
+  reminder that a backup is taken before every change.
 
 ## Using TS Assistant
 
-The top bar holds the sky-view options; the left sidebar holds your equipment,
-exposure plan templates, the project builder, and the list of existing projects.
+The top bar holds the profile picker and sky-view options; the left sidebar holds
+your equipment, exposure plan templates, the project builder, and the list of
+existing projects.
+
+### Choosing a profile
+
+NINA's Target Scheduler is organised by **profile**, and so is TS Assistant. Use the
+**NINA Profile** picker in the top bar to choose the active profile — the projects,
+exposure templates, plan templates, and equipment shown below are all scoped to it,
+and anything you create is added to it. The picker shows a short profile id by
+default; click the ✎ button to give it a friendlier name.
 
 ### Choosing imagery
 
@@ -238,44 +217,56 @@ The **Exposure plan templates** panel lets you save a named bundle of exposure p
 via the **Apply plan template…** option above. Exposure plan templates are a TS
 Assistant convenience and are saved between sessions.
 
+### Scheduler priorities (rule weights)
+
+Each project carries the eight scoring **rule weights** that Target Scheduler uses to
+decide what to image when. The **Rule weights** section of the builder shows them,
+pre-filled with NINA's defaults; adjust any you like, or **Reset to defaults**. Leave
+them untouched and you get exactly NINA's standard behaviour.
+
 ### Saving a project
 
-When the project has a name, at least one target, and at least one exposure plan,
-the **Save to database** button becomes available. Saving writes the project, with
-every mosaic expanded into individual panel targets, and where it goes depends on
-your [operating mode](#operating-modes-staging-vs-live):
+When the project has a name, at least one target, and at least one exposure plan, the
+**Save to database** button becomes available. Saving writes the project — with every
+mosaic expanded into individual panel targets — straight into your database, and it's
+ready to use in NINA. A backup is taken first, and the new project appears in the list
+and on the sky right away (and is still there after a reload).
 
-- **Staging mode (default):** the project is written to the separate copy at
-  `data/export/schedulerdb-export.sqlite`. Import that file into NINA (or put it
-  back in place of your `schedulerdb.sqlite`) to use the project.
-- **Live mode:** the project is written straight into your real database and is
-  ready to use immediately.
+### Editing an existing project
 
-Either way, the save is additive — it only adds new rows — and an automatic backup
-is taken first.
+You can edit a project that's still a **draft and hasn't captured any frames yet** —
+TS Assistant never touches projects that have started imaging. Such projects show an
+**✎ Edit** button in the Projects list; click it to load the project into the builder,
+change its name, targets, exposure plans or rule weights, and **Save changes**. The
+view centres on the project when you open it, and clicking any target centres and
+zooms to it.
+
+Saved mosaics load as individual panels (the original grid isn't stored), so editing
+is best for adjusting exposure plans and targets rather than re-tiling a mosaic.
 
 ## Configuration
 
 | Setting | What it does |
 |---|---|
 | `TS_ASSISTANT_DB` | Full path to your Target Scheduler database. If unset, the first database file in `sample_database/` is used. |
-| `TS_ASSISTANT_ALLOW_LIVE_WRITE` | Set to `1` when starting the backend to enable [live mode](#operating-modes-staging-vs-live) (writes directly to your real database). Unset/`0` keeps the default, safe staging mode. |
+| `TS_ASSISTANT_BACKUP_KEEP_LAST` | How many recent backups to always keep (default `10`). |
+| `TS_ASSISTANT_BACKUP_KEEP_DAYS` | Also keep every backup from the last this-many days (default `14`). |
 | `VITE_API_BASE` | Set this for the frontend only if the backend runs on a different host/port than the default (`http://<same-host>:8008`). |
 | Backend port | Passed to `uvicorn` with `--port` (default `8008`). |
 | Frontend port | The dev server defaults to `5173`. |
 
 ## Good to know
 
-- **In staging mode, saved projects aren't applied automatically.** A project you
-  save in the default staging mode appears in the app for the current session, but
-  it lives in the export copy — it won't reappear after a reload until you import
-  it into NINA. (In [live mode](#operating-modes-staging-vs-live) saved projects
-  persist immediately.)
+- **Changes go straight to your database.** A backup is taken before every change
+  (see [Your data and backups](#your-data-and-backups)), so it's all recoverable —
+  but close or pause NINA first; TS Assistant won't write while NINA holds the
+  database, and NINA won't see your changes until it reloads the project list.
 - **This is a local, single-user tool.** It has no login and is meant to run on
   your own machine or local network. Don't expose it to the public internet.
-- **Editing existing projects and templates isn't supported yet** — you can create
-  new ones, and reference or duplicate existing templates, but not change or delete
-  the ones already in your database.
+- **Some editing is still limited.** You can create projects and exposure templates,
+  and edit draft projects that haven't started imaging — but you can't yet change or
+  delete existing exposure templates, or edit projects that have already captured
+  frames.
 
 ## For developers
 
