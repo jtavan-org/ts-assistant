@@ -44,6 +44,41 @@
   padding: 5px 8px;
   font-size: 13px;
 }
+/* Profile picker: select + inline rename (bg0) */
+.profile-select,
+.profile-rename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.profile-rename input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  width: 130px;
+}
+.profile-edit,
+.profile-rename button {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.profile-edit:hover:not(:disabled),
+.profile-rename button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.profile-edit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .fov-toggle,
 .fov-size {
   display: flex;
