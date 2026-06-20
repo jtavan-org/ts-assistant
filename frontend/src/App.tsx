@@ -10,6 +10,7 @@ import {
   fetchProfiles,
   fetchProjects,
   fetchSurveys,
+  setProfileAlias,
   updatePlanTemplate,
   type ExportTargetInput,
   type ExposureTemplate,
@@ -117,6 +118,15 @@ export default function App() {
   // Effective active profile: the user's pick, else the first available. Derived
   // (not stored) so it tracks late-loading profiles without a sync effect.
   const activeProfileId = selectedProfileId || profiles[0]?.id || "";
+
+  // Save a friendly alias for a profile (app-local) and reflect it in the picker.
+  async function onRenameProfile(id: string, name: string) {
+    const info = await setProfileAlias(id, name);
+    setProfileList((prev) => {
+      const rest = prev.filter((p) => p.id !== info.id);
+      return [...rest, info];
+    });
+  }
 
   // Plan templates are profile-scoped server-side (app-local store), so (re)fetch
   // them whenever the active profile changes.
@@ -518,6 +528,7 @@ export default function App() {
           profiles={profiles}
           activeProfileId={activeProfileId}
           onSelect={setSelectedProfileId}
+          onRename={onRenameProfile}
         />
         <label className="fov-toggle">
           <input
