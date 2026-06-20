@@ -47,7 +47,9 @@ def test_export_then_undo(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["project_id"] > 0
-    assert body["counts"] == {"project": 1, "target": 1, "exposureplan": 2, "exposuretemplate": 2}
+    assert body["counts"] == {
+        "project": 1, "target": 1, "exposureplan": 2, "exposuretemplate": 2, "ruleweight": 8,
+    }
     assert body["backup_path"]
     assert body["target_db"].endswith("export.sqlite")
 

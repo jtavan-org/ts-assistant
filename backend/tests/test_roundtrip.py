@@ -116,6 +116,9 @@ def test_fresh_db_matches_real_nina_schema(tmp_path):
     conn = create_scheduler_db(tmp_path / "fresh.sqlite")
     got = _tables(conn)
     real = _tables(sqlite3.connect(REAL_DB))
+    # A real DB that TS Assistant has written to in live mode carries our additive
+    # ts_assistant_* provenance table(s); exclude them — they're ours, not NINA's.
+    real = {n: ddl for n, ddl in real.items() if not n.startswith("ts_assistant")}
     assert set(got) == set(real), "table set differs from real NINA DB"
     for name in real:
         assert got[name] == real[name], f"DDL differs from NINA for table {name}"

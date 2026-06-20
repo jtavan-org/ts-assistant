@@ -18,6 +18,7 @@ provided connection); the transactional/backup wrapper is mh3.2.
 from __future__ import annotations
 
 import sqlite3
+import time
 import uuid
 from pathlib import Path
 
@@ -105,6 +106,23 @@ class WriteResult(BaseModel):
     target_ids: list[int]
     plan_ids: list[int]
     template_ids: dict[str, int]  # filter name -> exposuretemplate.Id
+    ruleweight_ids: list[int] = Field(default_factory=list)
+
+
+# NINA creates one ruleweight row per scoring rule for EVERY project (these 8 rules
+# with these default weights — identical across all real projects). A project with NO
+# ruleweights crashes Target Scheduler's scheduler when it scores it, so the writer
+# seeds them exactly like NINA does (bead nil). (name, weight) pairs:
+DEFAULT_RULE_WEIGHTS: tuple[tuple[str, float], ...] = (
+    ("Meridian Flip Penalty", 0.0),
+    ("Meridian Window Priority", 75.0),
+    ("Mosaic Completion", 0.0),
+    ("Percent Complete", 50.0),
+    ("Project Priority", 50.0),
+    ("Setting Soonest", 50.0),
+    ("Smart Exposure Order", 0.0),
+    ("Target Switch Penalty", 67.0),
+)
 
 
 # The columns each INSERT below populates — the writer's column contract, used by
@@ -112,7 +130,16 @@ class WriteResult(BaseModel):
 # with the INSERT statements in write_project/_ensure_template.
 WRITTEN_COLUMNS: dict[str, frozenset[str]] = {
     "project": frozenset(
-        {"profileId", "name", "description", "state", "priority", "isMosaic", "guid"}
+        {
+            "profileId", "name", "description", "state", "priority", "isMosaic",
+            # NINA's Target Scheduler EF model maps these to NON-nullable .NET types,
+            # so leaving them NULL makes EF throw while materializing the project list
+            # → every project vanishes in NINA (bead nil). They're nullable in SQLite,
+            # so we must populate them ourselves with NINA's Project defaults.
+            "createdate", "minimumtime", "minimumaltitude", "usecustomhorizon",
+            "horizonoffset", "meridianwindow", "filterswitchfrequency", "ditherevery",
+            "enablegrader", "guid",
+        }
     ),
     "target": frozenset(
         {"name", "active", "ra", "dec", "epochcode", "rotation", "roi", "projectid", "guid"}
@@ -126,6 +153,8 @@ WRITTEN_COLUMNS: dict[str, frozenset[str]] = {
             "targetid", "exposureTemplateId", "enabled", "guid",
         }
     ),
+    # ruleweight has no guid column; one row per scoring rule per project.
+    "ruleweight": frozenset({"name", "weight", "projectid"}),
 }
 
 # Full column set written by write_exposure_template (qiz.5). Kept separate from the
@@ -173,9 +202,16 @@ def _ensure_template(
 
 def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
     """Insert a project, its targets, and their exposure plans. Does not commit."""
+    # NINA fills these project columns at the app layer (they're nullable in SQLite
+    # but non-nullable in its EF model). We must write them too, or NINA's projects
+    # query throws on the NULLs and shows no projects at all (bead nil). Values are
+    # NINA's own Project defaults; createdate is stored as Unix seconds like NINA.
     pcur = conn.execute(
-        "INSERT INTO project (profileId, name, description, state, priority, isMosaic, guid)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO project"
+        " (profileId, name, description, state, priority, isMosaic,"
+        "  createdate, minimumtime, minimumaltitude, usecustomhorizon, horizonoffset,"
+        "  meridianwindow, filterswitchfrequency, ditherevery, enablegrader, guid)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             spec.profile_id,
             spec.name,
@@ -183,10 +219,28 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
             spec.state,
             spec.priority,
             1 if spec.is_mosaic else 0,
+            int(time.time()),  # createdate (Unix seconds)
+            30,                # minimumtime (minutes)
+            0.0,               # minimumaltitude
+            0,                 # usecustomhorizon (false)
+            0.0,               # horizonoffset
+            0,                 # meridianwindow
+            0,                 # filterswitchfrequency
+            0,                 # ditherevery (0 = off)
+            1,                 # enablegrader (true)
             _guid(),
         ),
     )
     project_id = int(pcur.lastrowid)
+
+    # Seed NINA's default scoring rules; a project without them crashes Target Scheduler.
+    ruleweight_ids: list[int] = []
+    for rname, rweight in DEFAULT_RULE_WEIGHTS:
+        rcur = conn.execute(
+            "INSERT INTO ruleweight (name, weight, projectid) VALUES (?, ?, ?)",
+            (rname, rweight, project_id),
+        )
+        ruleweight_ids.append(int(rcur.lastrowid))
 
     templates: dict[str, int] = {}
     target_ids: list[int] = []
@@ -245,6 +299,7 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
         target_ids=target_ids,
         plan_ids=plan_ids,
         template_ids=templates,
+        ruleweight_ids=ruleweight_ids,
     )
 
 

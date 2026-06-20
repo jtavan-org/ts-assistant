@@ -49,8 +49,11 @@ from .writer import (
     write_project,
 )
 
-# Tables the writer touches, in FK-insert order.
-WRITTEN_TABLES = ("project", "exposuretemplate", "target", "exposureplan")
+# Tables the writer touches, in FK-insert order (project before its ruleweight children).
+WRITTEN_TABLES = ("project", "exposuretemplate", "target", "exposureplan", "ruleweight")
+
+# Tables with no `guid` column — provenance records guid=None and undo deletes by Id.
+GUIDLESS_TABLES = frozenset({"ruleweight"})
 
 # How long to wait for the write lock before treating the DB as busy. A live DB
 # NINA holds open will fail fast rather than hang the request.
@@ -113,6 +116,8 @@ def _max_ids(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def _guid(conn: sqlite3.Connection, table: str, row_id: int) -> str | None:
+    if table in GUIDLESS_TABLES:  # no guid column to read
+        return None
     r = conn.execute(f"SELECT guid FROM {table} WHERE Id = ?", (row_id,)).fetchone()
     return r[0] if r else None
 
@@ -123,6 +128,7 @@ def _inserted_ids(result: WriteResult) -> dict[str, list[int]]:
         "exposuretemplate": list(result.template_ids.values()),
         "target": list(result.target_ids),
         "exposureplan": list(result.plan_ids),
+        "ruleweight": list(result.ruleweight_ids),
     }
 
 
@@ -383,7 +389,8 @@ def _delete_provenanced_rows(conn: sqlite3.Connection, rows: list[ProvRow]) -> d
         by_table.setdefault(r.table, []).append(r)
 
     deleted: dict[str, int] = {}
-    for table in ("exposureplan", "target", "exposuretemplate", "project"):
+    # ruleweight (a guidless child of project) must go before project for FK integrity.
+    for table in ("exposureplan", "ruleweight", "target", "exposuretemplate", "project"):
         for r in by_table.get(table, []):
             # A template shared by other (non-deleted) plans must survive.
             if table == "exposuretemplate":
@@ -392,7 +399,9 @@ def _delete_provenanced_rows(conn: sqlite3.Connection, rows: list[ProvRow]) -> d
                 ).fetchone()[0]
                 if refs:
                     continue
-            if r.guid is None:
+            if table in GUIDLESS_TABLES:  # no guid to match on — delete by Id
+                cur = conn.execute(f"DELETE FROM {table} WHERE Id = ?", (r.id,))
+            elif r.guid is None:
                 cur = conn.execute(f"DELETE FROM {table} WHERE Id = ? AND guid IS NULL", (r.id,))
             else:
                 cur = conn.execute(

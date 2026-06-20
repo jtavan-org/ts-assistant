@@ -326,6 +326,45 @@ def test_foreign_key_integrity(tmp_path):
     conn.close()
 
 
+def test_project_required_columns_not_null(tmp_path):
+    """Regression (bead nil): these project columns are nullable in SQLite but
+    non-nullable in NINA's EF model. A NULL here makes NINA's projects query throw
+    and ALL projects vanish, so the writer must populate every one of them."""
+    db = _baseline(tmp_path / "t.sqlite")
+    res = export_project(_new_project(), target_db=db, now=T0)
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM project WHERE Id = ?", (res.project_id,)
+    ).fetchone()
+    conn.close()
+    required = [
+        "createdate", "minimumtime", "minimumaltitude", "usecustomhorizon",
+        "horizonoffset", "meridianwindow", "filterswitchfrequency", "ditherevery",
+        "enablegrader",
+    ]
+    nulls = [c for c in required if row[c] is None]
+    assert not nulls, f"NINA-required project columns left NULL: {nulls}"
+
+
+def test_project_seeds_default_ruleweights(tmp_path):
+    """Regression (bead nil): every NINA project has 8 scoring ruleweights; a project
+    with none crashes Target Scheduler. The writer must seed NINA's defaults."""
+    from app.db.writer import DEFAULT_RULE_WEIGHTS
+
+    db = _baseline(tmp_path / "t.sqlite")
+    res = export_project(_new_project(), target_db=db, now=T0)
+    conn = sqlite3.connect(db)
+    got = dict(
+        conn.execute(
+            "SELECT name, weight FROM ruleweight WHERE projectid = ?", (res.project_id,)
+        ).fetchall()
+    )
+    conn.close()
+    assert got == {name: weight for name, weight in DEFAULT_RULE_WEIGHTS}
+    assert len(got) == 8
+
+
 # --- provenance + undo -----------------------------------------------------
 
 def test_provenance_records_our_rows(tmp_path):
@@ -340,13 +379,19 @@ def test_provenance_records_our_rows(tmp_path):
     assert by_table["project"] == [res.project_id]
     assert sorted(by_table["target"]) == sorted(res.target_ids)
     assert sorted(by_table["exposureplan"]) == sorted(res.plan_ids)
-    assert all(r.guid for r in prov)  # every provenance row carries a guid
+    assert len(by_table["ruleweight"]) == 8  # NINA's 8 default scoring rules
+    # every provenance row carries a guid EXCEPT guidless tables (ruleweight)
+    assert all(r.guid for r in prov if r.table != "ruleweight")
+    assert all(r.guid is None for r in prov if r.table == "ruleweight")
 
 
 def test_undo_removes_exactly_our_rows(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
     conn = sqlite3.connect(db)
-    base = {t: len(_rows(conn, t)) for t in ("project", "target", "exposureplan", "exposuretemplate")}
+    base = {
+        t: len(_rows(conn, t))
+        for t in ("project", "target", "exposureplan", "exposuretemplate", "ruleweight")
+    }
     conn.close()
 
     res = export_project(_new_project(), target_db=db, now=T0)
@@ -354,11 +399,13 @@ def test_undo_removes_exactly_our_rows(tmp_path):
 
     conn = sqlite3.connect(db)
     after = {t: len(_rows(conn, t)) for t in base}
-    assert after == base  # back to baseline exactly
+    assert after == base  # back to baseline exactly (ruleweights removed too)
     assert provenance.rows_for_operation(conn, res.operation_id) == []
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []  # no orphaned rules
     conn.close()
     assert undo.deleted["project"] == 1
     assert undo.deleted["target"] == 2
+    assert undo.deleted["ruleweight"] == 8  # one project's worth of default rules
 
 
 def test_undo_aborts_on_guid_mismatch(tmp_path):
