@@ -61,6 +61,17 @@ def test_export_then_undo(client):
     assert u.json()["deleted"]["project"] == 1
 
 
+def test_export_then_delete(client):
+    created = client.post("/api/export", json=_payload()).json()
+    pid = created["project_id"]
+    r = client.delete(f"/api/export/{pid}")
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"]["project"] == 1
+    # gone from the project list
+    names = [p["name"] for p in client.get("/api/projects").json()]
+    assert "API Mosaic" not in names
+
+
 def test_export_rejects_blank_profile(client):
     bad = _payload()
     bad["profile_id"] = "   "

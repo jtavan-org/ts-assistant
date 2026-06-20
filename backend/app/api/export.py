@@ -19,11 +19,13 @@ from fastapi import APIRouter, HTTPException
 
 from ..db.export import (
     DatabaseBusyError,
+    DeleteResult,
     EditNotAllowedError,
     ExportError,
     ExportResult,
     ProgressError,
     UndoResult,
+    delete_project,
     export_project,
     undo_operation,
     update_project,
@@ -54,6 +56,17 @@ def edit_export(project_id: int, spec: ProjectSpec) -> ExportResult:
         return update_project(project_id, spec)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except (DatabaseBusyError, ProgressError, EditNotAllowedError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/export/{project_id}", response_model=DeleteResult)
+def delete_export(project_id: int) -> DeleteResult:
+    """Delete an existing Draft project in place (o2c); refused unless safely editable."""
+    try:
+        return delete_project(project_id)
     except (DatabaseBusyError, ProgressError, EditNotAllowedError) as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ExportError as e:

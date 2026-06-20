@@ -38,6 +38,7 @@ from .writer import (
     ExposureTemplateSpec,
     ProjectSpec,
     WriteResult,
+    delete_project as writer_delete_project,
     update_project as writer_update_project,
     write_exposure_template,
     write_project,
@@ -85,6 +86,13 @@ class ExportResult(BaseModel):
 
 class UndoResult(BaseModel):
     operation_id: str
+    target_db: str
+    backup_path: str
+    deleted: dict[str, int]
+
+
+class DeleteResult(BaseModel):
+    project_id: int
     target_db: str
     backup_path: str
     deleted: dict[str, int]
@@ -483,6 +491,69 @@ def update_project(
         plan_ids=result.plan_ids,
         template_ids=result.template_ids,
         counts=counts,
+    )
+
+
+def delete_project(
+    project_id: int,
+    *,
+    target_db: str | Path | None = None,
+    now: datetime | None = None,
+) -> DeleteResult:
+    """Delete an existing Draft project (and its rows) in place through the full safety
+    path. Same backup + BEGIN IMMEDIATE + integrity + FK-check wrapper as the writes;
+    refuses unless the project is editable (``_assert_editable``: Draft, no captured
+    progress, no custom cadence/override). The pre-delete backup is the recovery path.
+    """
+    now = now or datetime.now(timezone.utc)
+    target = _resolve_target(target_db)
+
+    backup = ensure_backup(target, now=now)  # consistent restore point before the delete
+    operation_id = "op_" + uuid.uuid4().hex
+
+    conn = sqlite3.connect(target, isolation_level=None, timeout=CONNECT_TIMEOUT)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        chk = conn.execute("PRAGMA quick_check").fetchone()[0]  # verify before locking
+        if chk != "ok":
+            raise ExportError(f"quick_check failed before write: {chk}")
+
+        conn.execute("BEGIN IMMEDIATE")
+        _assert_editable(conn, project_id)
+        deleted = writer_delete_project(conn, project_id)
+        fk = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if fk:
+            raise ExportError(f"foreign key violations: {fk[:5]}")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        conn.rollback()
+        raise _busy_or_export_error(e) from e
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    target_key = str(target.resolve())
+    set_target_state(target_key, last_seen_signature=backup_signature(target))
+    record_op(
+        OpLogEntry(
+            operation_id=operation_id,
+            written_at=now.isoformat(),
+            kind="delete",
+            target_db=target_key,
+            backup_path=backup.path,
+            status="committed",
+            project_guid=None,
+            counts=deleted,
+        )
+    )
+    return DeleteResult(
+        project_id=project_id,
+        target_db=target_key,
+        backup_path=backup.path,
+        deleted=deleted,
     )
 
 

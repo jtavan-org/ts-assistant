@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createExport,
   updateExport,
+  deleteProject as apiDeleteProject,
   createExposureTemplate,
   createPlanTemplate,
   deletePlanTemplate,
@@ -303,6 +304,34 @@ export default function App() {
     setPlaceMode(null);
     setSaveResult(null);
     focusOnTargets(project.targets); // center the project in the viewport
+  }
+
+  // Delete the project currently being edited (guarded server-side: Draft + no
+  // progress). A backup is taken first; on success it leaves the builder.
+  async function deleteProject() {
+    if (editingProjectId == null) return;
+    const pid = editingProjectId;
+    const name = projectDraft?.name.trim() || "this project";
+    if (
+      !window.confirm(
+        `Delete “${name}”? It will be removed from your Target Scheduler database ` +
+          `(a backup is taken first).`,
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      await apiDeleteProject(pid);
+      setProjects((prev) => prev.filter((p) => p.id !== pid));
+      setProjectDraft(null);
+      setEditingProjectId(null);
+      setPlaceMode(null);
+      setSaveResult({ ok: true, message: `Deleted “${name}”.` });
+    } catch (e) {
+      setSaveResult({ ok: false, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSaving(false);
+    }
   }
 
   function addTarget() {
@@ -704,6 +733,7 @@ export default function App() {
                   setPlaceMode(null);
                   setSaveResult(null);
                 }}
+                onDelete={deleteProject}
                 onRenameProject={(name) =>
                   setProjectDraft((d) => (d ? { ...d, name } : d))
                 }

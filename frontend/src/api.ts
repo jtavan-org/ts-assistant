@@ -257,6 +257,29 @@ export const createExport = (req: ExportRequest) =>
 export const updateExport = (projectId: number, req: ExportRequest) =>
   putWithDetail<ExportResult>(`/export/${projectId}`, req);
 
+export interface DeleteResult {
+  project_id: number;
+  target_db: string;
+  backup_path: string;
+  deleted: Record<string, number>;
+}
+
+// DELETE that surfaces the backend's error `detail` (409 busy / not-editable).
+export async function deleteProject(projectId: number): Promise<DeleteResult> {
+  const res = await fetch(`${API_BASE}/export/${projectId}`, { method: "DELETE" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j && typeof j.detail === "string") msg = j.detail;
+    } catch {
+      /* non-JSON body */
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<DeleteResult>;
+}
+
 // Append ?profile_id= only when a profile is active, so the param stays optional.
 const scoped = (path: string, profileId?: string) =>
   profileId ? `${path}?profile_id=${encodeURIComponent(profileId)}` : path;

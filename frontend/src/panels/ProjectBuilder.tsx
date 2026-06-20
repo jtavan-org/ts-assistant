@@ -55,6 +55,8 @@ interface Props {
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
   onDiscard: () => void;
+  /** Delete the project being edited (only meaningful when `editing`). */
+  onDelete: () => void;
   onRenameProject: (name: string) => void;
   onAddTarget: () => void;
   onSelectTarget: (id: string) => void;
@@ -93,6 +95,7 @@ export default function ProjectBuilder({
   saveResult,
   onNewProject,
   onDiscard,
+  onDelete,
   onRenameProject,
   onAddTarget,
   onSelectTarget,
@@ -204,7 +207,10 @@ export default function ProjectBuilder({
               <button onClick={onAddTarget} title="Add another target">
                 ＋ Add target
               </button>
-              <button onClick={onDiscard} title="Discard this project">
+              <button
+                onClick={editing ? onDelete : onDiscard}
+                title={editing ? "Delete this project" : "Discard this draft"}
+              >
                 🗑
               </button>
             </div>

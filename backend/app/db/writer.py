@@ -526,6 +526,32 @@ def update_project(
     )
 
 
+def delete_project(conn: sqlite3.Connection, project_id: int) -> dict[str, int]:
+    """Delete a project and all of its rows. Does not commit; the caller must have
+    verified the project is editable (Draft, no progress, no cadence/override).
+
+    Leaves shared exposuretemplates alone (they're user-owned and referenced by other
+    projects). Returns per-table delete counts.
+    """
+    tids = [r[0] for r in conn.execute("SELECT Id FROM target WHERE projectid = ?", (project_id,))]
+    deleted: dict[str, int] = {}
+    for old in tids:
+        c = conn.execute("DELETE FROM exposureplan WHERE targetid = ?", (old,))
+        deleted["exposureplan"] = deleted.get("exposureplan", 0) + c.rowcount
+        if _table_exists(conn, "flathistory"):
+            conn.execute("DELETE FROM flathistory WHERE targetId = ?", (old,))
+    deleted["target"] = conn.execute(
+        "DELETE FROM target WHERE projectid = ?", (project_id,)
+    ).rowcount
+    deleted["ruleweight"] = conn.execute(
+        "DELETE FROM ruleweight WHERE projectid = ?", (project_id,)
+    ).rowcount
+    deleted["project"] = conn.execute(
+        "DELETE FROM project WHERE Id = ?", (project_id,)
+    ).rowcount
+    return deleted
+
+
 def write_exposure_template(conn: sqlite3.Connection, spec: ExposureTemplateSpec) -> int:
     """Insert one full exposure template; return its new Id. Does not commit."""
     cur = conn.execute(

@@ -22,6 +22,7 @@ from app.db.export import (
     ExportError,
     ProgressError,
     create_exposure_template,
+    delete_project,
     export_project,
     undo_operation,
     update_project,
@@ -599,6 +600,54 @@ def test_update_refuses_unknown_project(tmp_path):
     )
     with pytest.raises(EditNotAllowedError):
         update_project(99999, spec, target_db=db, now=T0)
+
+
+def test_delete_project_removes_all_rows(tmp_path):
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = _export_draft(db).project_id
+    tgt, _plan_id, _etid = _first_target_and_plan(db, pid)
+    # add a flathistory row to confirm it's cleaned up with the target
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO flathistory (targetId, profileId, flatsType, filterName) VALUES (?, ?, 'SKY', 'L')",
+        (tgt, PROFILE),
+    )
+    conn.commit()
+    conn.close()
+
+    res = delete_project(pid, target_db=db, now=T0)
+    assert res.deleted["project"] == 1 and res.deleted["target"] >= 1
+
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM project WHERE Id = ?", (pid,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM target WHERE projectid = ?", (pid,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM ruleweight WHERE projectid = ?", (pid,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM flathistory WHERE targetId = ?", (tgt,)).fetchone()[0] == 0
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    conn.close()
+
+
+def test_delete_project_refuses_started_work(tmp_path):
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = _export_draft(db).project_id
+    tgt, _plan_id, _etid = _first_target_and_plan(db, pid)
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE exposureplan SET acquired = 5 WHERE targetid = ?", (tgt,))
+    conn.commit()
+    conn.close()
+    with pytest.raises(ProgressError):
+        delete_project(pid, target_db=db, now=T0)
+    # nothing was deleted
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM project WHERE Id = ?", (pid,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_delete_project_refuses_non_draft(tmp_path):
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = export_project(_new_project(), target_db=db, now=T0).project_id  # state=1 (active)
+    with pytest.raises(EditNotAllowedError):
+        delete_project(pid, target_db=db, now=T0)
 
 
 # --- provenance + undo -----------------------------------------------------
