@@ -91,6 +91,12 @@ export interface ProfileInfo {
   name: string;
 }
 
+/** One scoring-rule weight (qiz.3). Name matches a NINA rule. */
+export interface RuleWeight {
+  name: string;
+  weight: number;
+}
+
 export type PlanTemplateInput = Omit<PlanTemplate, "id"> & { id?: string };
 
 /** Body for creating an exposure template (qiz.5). Only name/filter/profile are
@@ -190,6 +196,8 @@ export interface ExportRequest {
   description?: string | null;
   is_mosaic?: boolean;
   targets: ExportTargetInput[];
+  /** Optional per-rule weight overrides (qiz.3); omitted → NINA defaults. */
+  rule_weights?: RuleWeight[];
 }
 
 export interface ExportResult {
@@ -234,6 +242,8 @@ export const fetchHealth = () => getJSON<Health>("/health");
 export const fetchSurveys = () => getJSON<Survey[]>("/surveys");
 export const fetchProjects = () => getJSON<Project[]>("/projects");
 export const fetchProfiles = () => getJSON<ProfileInfo[]>("/profiles");
+export const fetchRuleWeightDefaults = () =>
+  getJSON<RuleWeight[]>("/rule-weight-defaults");
 export const setProfileAlias = (id: string, name: string) =>
   sendJSON<ProfileInfo>(`/profiles/${encodeURIComponent(id)}`, "PUT", { name });
 export const fetchExposureTemplates = () =>

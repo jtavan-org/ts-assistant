@@ -58,6 +58,13 @@ class TargetSpec(BaseModel):
     exposure_plans: list[ExposurePlanSpec] = Field(default_factory=list)
 
 
+class RuleWeightSpec(BaseModel):
+    """One scoring-rule weight override (qiz.3). ``name`` must match a NINA rule."""
+
+    name: str
+    weight: float
+
+
 class ProjectSpec(BaseModel):
     """A project with its targets — the unit the writer/exporter persists."""
 
@@ -68,6 +75,9 @@ class ProjectSpec(BaseModel):
     priority: int = 1
     is_mosaic: bool = False
     targets: list[TargetSpec] = Field(default_factory=list)
+    # Optional per-rule weight overrides (qiz.3). Unset → NINA defaults; provided
+    # weights override matching rules by name, others keep their default.
+    rule_weights: list[RuleWeightSpec] | None = None
 
 
 class ExposureTemplateSpec(BaseModel):
@@ -233,12 +243,15 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
     )
     project_id = int(pcur.lastrowid)
 
-    # Seed NINA's default scoring rules; a project without them crashes Target Scheduler.
+    # Seed NINA's scoring rules; a project without all of them crashes Target
+    # Scheduler. Always write the full set of 8, applying any user weight overrides
+    # by name (qiz.3) so the crash-safety invariant holds regardless of input.
+    overrides = {rw.name: rw.weight for rw in (spec.rule_weights or [])}
     ruleweight_ids: list[int] = []
     for rname, rweight in DEFAULT_RULE_WEIGHTS:
         rcur = conn.execute(
             "INSERT INTO ruleweight (name, weight, projectid) VALUES (?, ?, ?)",
-            (rname, rweight, project_id),
+            (rname, overrides.get(rname, rweight), project_id),
         )
         ruleweight_ids.append(int(rcur.lastrowid))
 

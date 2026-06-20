@@ -1,5 +1,6 @@
-import type { ExposureTemplate, PlanTemplate } from "../api";
+import type { ExposureTemplate, PlanTemplate, RuleWeight } from "../api";
 import { templateLabel } from "../templateLabel";
+import RuleWeightsEditor from "./RuleWeightsEditor";
 import type { FovBox, PlaceMode } from "../sky/AladinView";
 
 /** One target being framed: a single pointing (1×1) or a mosaic (N×M panes). */
@@ -33,6 +34,8 @@ export interface ProjectDraft {
   activeTargetId: string | null;
   /** Applied to every target/pane on export (the mosaic-imaging common case). */
   exposurePlans: ExposurePlanDraft[];
+  /** Scoring rule weights for the project (qiz.3); seeded from NINA defaults. */
+  ruleWeights: RuleWeight[];
 }
 
 interface Props {
@@ -63,6 +66,9 @@ interface Props {
   onApplyPlanTemplate: (planTemplateId: string) => void;
   /** Open the create-template modal; resolves to the new template (or null). */
   onRequestNewTemplate: () => Promise<ExposureTemplate | null>;
+  /** NINA default rule weights — enables the editor's "Reset to defaults". */
+  ruleWeightDefaults: RuleWeight[];
+  onPatchRuleWeights: (weights: RuleWeight[]) => void;
   onSave: () => void;
 }
 
@@ -97,6 +103,8 @@ export default function ProjectBuilder({
   onRemovePlan,
   onApplyPlanTemplate,
   onRequestNewTemplate,
+  ruleWeightDefaults,
+  onPatchRuleWeights,
   onSave,
 }: Props) {
   const hasFov = !!fov && fov.widthDeg > 0 && fov.heightDeg > 0;
@@ -399,6 +407,14 @@ export default function ProjectBuilder({
                 <div className="eq-readout warn">Add at least one exposure plan.</div>
               )}
             </div>
+
+            {draft.ruleWeights.length > 0 && (
+              <RuleWeightsEditor
+                weights={draft.ruleWeights}
+                defaults={ruleWeightDefaults}
+                onChange={onPatchRuleWeights}
+              />
+            )}
 
             <button
               className="eq-save"

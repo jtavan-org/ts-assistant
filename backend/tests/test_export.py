@@ -365,6 +365,44 @@ def test_project_seeds_default_ruleweights(tmp_path):
     assert len(got) == 8
 
 
+def test_custom_rule_weights_override_defaults(tmp_path):
+    """qiz.3: provided weights override matching rules; all 8 still written."""
+    from app.db.writer import DEFAULT_RULE_WEIGHTS, RuleWeightSpec
+
+    db = _baseline(tmp_path / "t.sqlite")
+    spec = _new_project()
+    spec.rule_weights = [
+        RuleWeightSpec(name="Project Priority", weight=99.0),
+        RuleWeightSpec(name="Mosaic Completion", weight=42.0),
+        RuleWeightSpec(name="Not A Real Rule", weight=7.0),  # ignored, not seeded
+    ]
+    res = export_project(spec, target_db=db, now=T0)
+    conn = sqlite3.connect(db)
+    got = dict(
+        conn.execute(
+            "SELECT name, weight FROM ruleweight WHERE projectid = ?", (res.project_id,)
+        ).fetchall()
+    )
+    conn.close()
+    assert len(got) == 8  # crash-safety invariant: full set always written
+    assert got["Project Priority"] == 99.0
+    assert got["Mosaic Completion"] == 42.0
+    assert "Not A Real Rule" not in got
+    # unspecified rules keep their NINA default
+    defaults = dict(DEFAULT_RULE_WEIGHTS)
+    assert got["Setting Soonest"] == defaults["Setting Soonest"]
+
+
+def test_rule_weight_defaults_endpoint():
+    from fastapi.testclient import TestClient
+
+    from app.db.writer import DEFAULT_RULE_WEIGHTS
+    from app.main import app
+
+    body = TestClient(app).get("/api/rule-weight-defaults").json()
+    assert [(r["name"], r["weight"]) for r in body] == list(DEFAULT_RULE_WEIGHTS)
+
+
 # --- provenance + undo -----------------------------------------------------
 
 def test_provenance_records_our_rows(tmp_path):

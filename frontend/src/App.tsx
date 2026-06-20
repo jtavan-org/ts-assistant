@@ -9,6 +9,7 @@ import {
   fetchPlanTemplates,
   fetchProfiles,
   fetchProjects,
+  fetchRuleWeightDefaults,
   fetchSurveys,
   setProfileAlias,
   updatePlanTemplate,
@@ -20,6 +21,7 @@ import {
   type PlanTemplateInput,
   type ProfileInfo,
   type Project,
+  type RuleWeight,
   type Survey,
   type Target,
 } from "./api";
@@ -62,6 +64,7 @@ export default function App() {
   // The user's explicit pick ("" = none yet); the *effective* active profile is
   // derived below as this-or-the-first-available, so no default-sync effect is needed.
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [ruleWeightDefaults, setRuleWeightDefaults] = useState<RuleWeight[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
   const [focus, setFocus] = useState<SkyFocus | null>(null);
@@ -95,6 +98,9 @@ export default function App() {
       .catch(() => {});
     fetchProfiles()
       .then(setProfileList)
+      .catch(() => {});
+    fetchRuleWeightDefaults()
+      .then(setRuleWeightDefaults)
       .catch(() => {});
   }, []);
 
@@ -214,6 +220,7 @@ export default function App() {
       // New projects inherit the active profile chosen in the topbar picker.
       name: "New project",
       profileId: activeProfileId,
+      ruleWeights: ruleWeightDefaults.map((w) => ({ ...w })),
       targets: [t],
       activeTargetId: t.id,
       exposurePlans: [
@@ -314,6 +321,10 @@ export default function App() {
     setProjectDraft((d) =>
       d ? { ...d, exposurePlans: d.exposurePlans.filter((p) => p.id !== id) } : d,
     );
+  }
+
+  function patchRuleWeights(ruleWeights: RuleWeight[]) {
+    setProjectDraft((d) => (d ? { ...d, ruleWeights } : d));
   }
 
   // Exposure plan templates (qiz.6) — app-side named bundles of template+count.
@@ -423,11 +434,18 @@ export default function App() {
     setSaving(true);
     setSaveResult(null);
     try {
+      // Only send weights that differ from NINA's defaults; the backend fills the
+      // rest. Omit entirely when unchanged so default projects post a clean body.
+      const changedWeights = draft.ruleWeights.filter(
+        (w) =>
+          ruleWeightDefaults.find((d) => d.name === w.name)?.weight !== w.weight,
+      );
       const res = await createExport({
         profile_id: draft.profileId.trim(),
         name,
         is_mosaic: isMosaic,
         targets: apiTargets,
+        ...(changedWeights.length ? { rule_weights: changedWeights } : {}),
       });
 
       // Surface the just-created project in the list so the user sees it land; its
@@ -611,6 +629,8 @@ export default function App() {
             onRemovePlan={removePlan}
             onApplyPlanTemplate={applyPlanTemplate}
             onRequestNewTemplate={requestNewTemplate}
+            ruleWeightDefaults={ruleWeightDefaults}
+            onPatchRuleWeights={patchRuleWeights}
             onSave={saveProject}
           />
           <PlanTemplatesPanel
