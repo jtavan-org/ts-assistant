@@ -45,6 +45,8 @@ interface Props {
   /** Saved exposure plan templates; applying one fills the plans in a single pick. */
   planTemplates: PlanTemplate[];
   saving: boolean;
+  /** True when the backend writes the real DB (live mode) vs a staging copy. */
+  liveMode: boolean;
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
   onDiscard: () => void;
@@ -79,6 +81,7 @@ export default function ProjectBuilder({
   templates,
   planTemplates,
   saving,
+  liveMode,
   saveResult,
   onNewProject,
   onDiscard,
@@ -403,8 +406,10 @@ export default function ProjectBuilder({
               onClick={onSave}
               title={
                 canSave
-                  ? "Write this project to a staging Target Scheduler database"
-                  : "Needs a name, a NINA profile, a target, and an exposure plan"
+                  ? liveMode
+                    ? "Write this project directly to your live Target Scheduler database"
+                    : "Write this project to a staging Target Scheduler database to import into NINA"
+                  : "Needs a name, a target, and an exposure plan with a template"
               }
             >
               {saving ? "Saving…" : "Save to database"}
