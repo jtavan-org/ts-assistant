@@ -7,6 +7,8 @@ interface Props {
   defaults?: ProjectSettings;
   /** Open the panel by default (collapsed otherwise). */
   open?: boolean;
+  /** True when the project has a custom exposure order (m74): smart order overrides it. */
+  hasOverrideOrder?: boolean;
 }
 
 type NumKey =
@@ -42,7 +44,13 @@ const BOOL_FIELDS: { key: BoolKey; label: string }[] = [
  * — given a settings object + onChange — so it works for both a new-project draft and
  * editing an existing project. The parent supplies the values (NINA defaults for new).
  */
-export default function ProjectSettingsEditor({ settings, onChange, defaults, open }: Props) {
+export default function ProjectSettingsEditor({
+  settings,
+  onChange,
+  defaults,
+  open,
+  hasOverrideOrder,
+}: Props) {
   const set = <K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]) =>
     onChange({ ...settings, [key]: value });
 
@@ -84,14 +92,24 @@ export default function ProjectSettingsEditor({ settings, onChange, defaults, op
         ))}
 
         {BOOL_FIELDS.map((f) => (
-          <label className="rw-row" key={f.key}>
-            <span className="rw-name">{f.label}</span>
-            <input
-              type="checkbox"
-              checked={settings[f.key]}
-              onChange={(e) => set(f.key, e.target.checked)}
-            />
-          </label>
+          <div key={f.key}>
+            <label className="rw-row">
+              <span className="rw-name">{f.label}</span>
+              <input
+                type="checkbox"
+                checked={settings[f.key]}
+                onChange={(e) => set(f.key, e.target.checked)}
+              />
+            </label>
+            {f.key === "smart_exposure_order" &&
+              settings.smart_exposure_order &&
+              hasOverrideOrder && (
+                <p className="rw-warn">
+                  Smart exposure order overrides your custom exposure order — turn it off
+                  to use the order you set below.
+                </p>
+              )}
+          </div>
         ))}
 
         {defaults && (

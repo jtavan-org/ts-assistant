@@ -447,6 +447,7 @@ export default function ProjectBuilder({
               settings={draft.settings}
               defaults={PROJECT_SETTING_DEFAULTS}
               onChange={onPatchSettings}
+              hasOverrideOrder={draft.overrideOrder.length > 0}
             />
 
             <OverrideOrderEditor
