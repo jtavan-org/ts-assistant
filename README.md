@@ -224,6 +224,15 @@ decide what to image when. The **Rule weights** section of the builder shows the
 pre-filled with NINA's defaults; adjust any you like, or **Reset to defaults**. Leave
 them untouched and you get exactly NINA's standard behaviour.
 
+### Advanced project settings
+
+The collapsible **Advanced settings** section exposes the rest of Target Scheduler's
+project options — priority, minimum time, minimum/maximum altitude, custom horizon and
+offset, meridian window, filter-switch frequency, dither-every, enable grader, smart
+exposure order, and flats handling. All start at NINA's defaults (with **Reset to
+defaults**), so you only touch what you care about. The same settings appear when you
+edit a project, pre-filled with its current values.
+
 ### Saving a project
 
 When the project has a name, at least one target, and at least one exposure plan, the
@@ -237,7 +246,8 @@ and on the sky right away (and is still there after a reload).
 You can edit a project that's still a **draft and hasn't captured any frames yet** —
 TS Assistant never touches projects that have started imaging. Such projects show an
 **✎ Edit** button in the Projects list; click it to load the project into the builder,
-change its name, targets, exposure plans or rule weights, and **Save changes**. The
+change its name, targets, exposure plans, rule weights or advanced settings, and
+**Save changes** (or **Discard changes** to back out, or the trash to delete it). The
 view centres on the project when you open it, and clicking any target centres and
 zooms to it.
 
