@@ -52,8 +52,6 @@ interface Props {
   saving: boolean;
   /** True when editing an existing project (o2c) rather than creating a new one. */
   editing: boolean;
-  /** True when the backend writes the real DB (live mode) vs a staging copy. */
-  liveMode: boolean;
   saveResult: { ok: boolean; message: string } | null;
   onNewProject: () => void;
   onDiscard: () => void;
@@ -92,7 +90,6 @@ export default function ProjectBuilder({
   planTemplates,
   saving,
   editing,
-  liveMode,
   saveResult,
   onNewProject,
   onDiscard,
@@ -428,9 +425,7 @@ export default function ProjectBuilder({
               onClick={onSave}
               title={
                 canSave
-                  ? liveMode
-                    ? "Write this project directly to your live Target Scheduler database"
-                    : "Write this project to a staging Target Scheduler database to import into NINA"
+                  ? "Write this project to your Target Scheduler database (a backup is taken first)"
                   : "Needs a name, a target, and an exposure plan with a template"
               }
             >

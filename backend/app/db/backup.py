@@ -1,15 +1,11 @@
-"""Consistent, time-coalesced database backups (first consumer of BACKUP_DIR).
+"""Consistent pre-write database backups (the safety mechanism for in-place writes).
 
-Backups use SQLite's Online Backup API (``Connection.backup()``) so even a live DB
-that NINA holds open snapshots without torn pages — a plain file copy can capture a
-half-written page. Each backup lands in ``data/backups/`` with a tiny ``.json``
-sidecar so coalescing/pruning never has to re-stat or reparse the big file.
-
-Coalescing (the user's intent): before a write we only take a *new* backup if none
-exists, the window has expired, or the DB changed since our last write (an external
-edit). Our own back-to-back writes within the window share one restore point. The
-post-write signature is recorded by the orchestrator (see export.py) so our own
-commits don't masquerade as external changes.
+A fresh backup is taken before **every** write. Backups use SQLite's Online Backup
+API (``Connection.backup()``) so even a database NINA holds open snapshots without
+torn pages — a plain file copy can capture a half-written page. Each backup lands in
+``data/backups/`` with a tiny ``.json`` sidecar so pruning never has to re-stat or
+reparse the database file. Retention is bounded by ``prune_backups`` (keep the last
+K and everything within the last D days).
 """
 
 from __future__ import annotations
@@ -29,7 +25,6 @@ from ..config import (
     backup_gzip,
     backup_keep_days,
     backup_keep_last,
-    backup_window_min,
     ensure_dirs,
 )
 from . import ops
@@ -45,12 +40,12 @@ class BackupInfo(BaseModel):
 
 
 def backup_signature(db_path: Path) -> str:
-    """Cheap change-detection token for a DB file: size + nanosecond mtime.
+    """Cheap change token for a DB file: size + nanosecond mtime (+ ``-wal``).
 
-    Includes the ``-wal`` sidecar when present: a live DB NINA writes in WAL mode
-    lands new data in ``-wal`` *without* changing the main file's size/mtime until a
-    checkpoint, so a main-file-only signature would miss external writes and let
-    coalescing reuse a backup taken before them. Folding ``-wal`` in closes that hole.
+    Includes the ``-wal`` sidecar when present: a DB NINA writes in WAL mode lands new
+    data in ``-wal`` *without* changing the main file's size/mtime until a checkpoint,
+    so a main-file-only signature would miss external writes. Recorded post-write by
+    the orchestrator to detect external edits between our writes.
     """
     st = db_path.stat()
     sig = f"size:{st.st_size};mtime:{st.st_mtime_ns}"
@@ -63,18 +58,15 @@ def backup_signature(db_path: Path) -> str:
     return sig
 
 
-def consistent_copy(src: Path, dest: Path, *, live: bool = False) -> None:
+def consistent_copy(src: Path, dest: Path) -> None:
     """Transactionally consistent copy of a SQLite DB via the Online Backup API.
 
-    In ``live`` mode the source may be a WAL database NINA holds open; we open it
-    read-write-capable (the backup API never modifies the source) so SQLite maps the
-    ``-shm`` index and the copy captures all committed WAL frames. A ``mode=ro`` open
-    can silently miss those frames — a backup that is "torn in time".
+    The source may be a WAL database NINA holds open; we open it read-write-capable
+    (the backup API never modifies the source) so SQLite maps the ``-shm`` index and
+    the copy captures all committed WAL frames. A ``mode=ro`` open can silently miss
+    those frames — a backup that is "torn in time".
     """
-    if live:
-        src_conn = sqlite3.connect(str(src))
-    else:
-        src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    src_conn = sqlite3.connect(str(src))
     dest_conn = sqlite3.connect(dest)
     try:
         with dest_conn:
@@ -103,7 +95,6 @@ def create_backup(
     *,
     now: datetime | None = None,
     gzip_it: bool | None = None,
-    live: bool = False,
 ) -> BackupInfo:
     ensure_dirs()
     now = now or datetime.now(timezone.utc)
@@ -111,7 +102,7 @@ def create_backup(
     sig8 = hashlib.sha1(sig.encode()).hexdigest()[:8]
     name = f"{db_path.stem}-{now.strftime('%Y%m%dT%H%M%SZ')}-{sig8}.sqlite"
     dest = _unique(BACKUP_DIR / name)
-    consistent_copy(db_path, dest, live=live)
+    consistent_copy(db_path, dest)
 
     do_gzip = backup_gzip() if gzip_it is None else gzip_it
     if do_gzip:
@@ -152,35 +143,17 @@ def latest_backup(db_path: Path) -> BackupInfo | None:
     return max(infos, key=lambda i: i.created_at) if infos else None
 
 
-def should_backup(db_path: Path, *, window_min: int, now: datetime) -> bool:
-    state = ops.get_target_state(str(db_path.resolve()))
-    if latest_backup(db_path) is None or state.last_backup_time is None:
-        return True
-    if now - datetime.fromisoformat(state.last_backup_time) >= timedelta(minutes=window_min):
-        return True  # window expired
-    return backup_signature(db_path) != state.last_seen_signature  # external change
-
-
-def ensure_backup(
-    db_path: Path,
-    *,
-    window_min: int | None = None,
-    now: datetime | None = None,
-    live: bool = False,
-) -> BackupInfo:
-    """Return the backup that is this write's restore point — new or reused."""
+def ensure_backup(db_path: Path, *, now: datetime | None = None) -> BackupInfo:
+    """Take a fresh backup before a write (the restore point) and prune old ones."""
     now = now or datetime.now(timezone.utc)
-    window = backup_window_min() if window_min is None else window_min
-    if should_backup(db_path, window_min=window, now=now):
-        info = create_backup(db_path, now=now, live=live)
-        ops.set_target_state(
-            str(db_path.resolve()),
-            last_backup_time=now.isoformat(),
-            last_seen_signature=info.source_signature,
-        )
-        prune_backups(db_path, now=now)
-        return info
-    return latest_backup(db_path)  # type: ignore[return-value]  # non-None by should_backup
+    info = create_backup(db_path, now=now)
+    ops.set_target_state(
+        str(db_path.resolve()),
+        last_backup_time=now.isoformat(),
+        last_seen_signature=info.source_signature,
+    )
+    prune_backups(db_path, now=now)
+    return info
 
 
 def prune_backups(

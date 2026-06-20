@@ -127,11 +127,9 @@ export interface ExposureTemplateInput {
 export interface Health {
   status: string;
   db_present: boolean;
-  source_db: string | null;
-  mode: "LIVE" | "STAGING";
-  read_path: string | null;
-  write_target: string | null;
-  live_error: string | null;
+  db_path: string | null;
+  backup_dir: string | null;
+  error: string | null;
 }
 
 async function getJSON<T>(path: string): Promise<T> {

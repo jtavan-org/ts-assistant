@@ -22,44 +22,39 @@ from .api import (
     surveys,
     templates,
 )
-from .config import ActiveMode, active_mode
+from .config import BACKUP_DIR, find_source_db
 
 logger = logging.getLogger("ts_assistant")
 
-# Set once at startup: a reason live mode is unusable beyond "no DB found" (e.g. the
-# live DB can't be opened for read/write). Surfaced via /api/health so the UI can warn.
-_LIVE_PROBE_ERROR: str | None = None
 
-
-def _probe_live(mode: ActiveMode) -> str | None:
-    """Open the live DB the way reads/backups will, to surface perms/lock issues early."""
-    if mode.name != "LIVE" or mode.source is None:
+def _db_error(source) -> str | None:
+    """Open the DB the way reads/backups will, to surface perms/lock issues early."""
+    if source is None:
         return None
     try:
-        conn = sqlite3.connect(str(mode.source))  # rw-capable, as live reads/backups are
+        conn = sqlite3.connect(str(source))  # rw-capable, as reads/backups are
         try:
             conn.execute("PRAGMA user_version").fetchone()
         finally:
             conn.close()
     except Exception as e:  # noqa: BLE001 — report any open failure, don't crash startup
-        return f"cannot open the live Target Scheduler database for read/write: {e}"
+        return f"cannot open the Target Scheduler database for read/write: {e}"
     return None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _LIVE_PROBE_ERROR
-    mode = active_mode()
-    _LIVE_PROBE_ERROR = mode.live_error or _probe_live(mode)
-    if mode.name == "LIVE" and _LIVE_PROBE_ERROR:
-        logger.warning("TS Assistant: LIVE mode requested but MISCONFIGURED — %s", _LIVE_PROBE_ERROR)
-    elif mode.name == "LIVE":
+    source = find_source_db()
+    if source is None:
         logger.warning(
-            "TS Assistant: LIVE/PRODUCTION mode — reads AND writes the real DB at %s",
-            mode.write_target,
+            "TS Assistant: no Target Scheduler database found — set TS_ASSISTANT_DB or "
+            "drop one into sample_database/."
         )
     else:
-        logger.info("TS Assistant: STAGING mode — writes go to %s", mode.write_target)
+        logger.warning(
+            "TS Assistant: operating in place on %s (a backup is taken before every write)",
+            source,
+        )
     yield
 
 
@@ -85,13 +80,11 @@ app.include_router(profiles.router, prefix="/api")
 
 @app.get("/api/health")
 def health() -> dict:
-    mode = active_mode()
+    source = find_source_db()
     return {
         "status": "ok",
-        "db_present": mode.source is not None,
-        "source_db": str(mode.source) if mode.source else None,
-        "mode": mode.name,  # "LIVE" | "STAGING"
-        "read_path": str(mode.read_path) if mode.read_path else None,
-        "write_target": str(mode.write_target) if mode.write_target else None,
-        "live_error": mode.live_error or _LIVE_PROBE_ERROR,
+        "db_present": source is not None,
+        "db_path": str(source) if source else None,
+        "backup_dir": str(BACKUP_DIR),
+        "error": _db_error(source),
     }

@@ -28,14 +28,7 @@ def reader(tmp_path, monkeypatch):
     from app import config
 
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
-    monkeypatch.setattr(config, "WORKING_DIR", tmp_path / "data" / "working")
     monkeypatch.setattr(config, "BACKUP_DIR", tmp_path / "data" / "backups")
-
-    from app.db import working_copy
-
-    monkeypatch.setattr(
-        working_copy, "WORKING_DB", tmp_path / "data" / "working" / "schedulerdb.sqlite"
-    )
 
     from app.db import reader as reader_mod
 

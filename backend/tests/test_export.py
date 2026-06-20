@@ -43,12 +43,15 @@ T0 = datetime(2026, 6, 19, 12, 0, 0, tzinfo=timezone.utc)
 
 @pytest.fixture(autouse=True)
 def isolate(tmp_path, monkeypatch):
-    """Redirect backup dir + ops file to tmp, and default to 'no live source DB'."""
+    """Redirect backup dir + ops file to tmp; default to 'no database configured'.
+
+    Every test passes an explicit ``target_db``, so the default resolution isn't used;
+    point ``find_source_db`` at nothing so it never globs the developer's real DB.
+    """
     bdir = tmp_path / "backups"
     bdir.mkdir()
     monkeypatch.setattr(backup, "BACKUP_DIR", bdir)
     monkeypatch.setattr(ops, "OPS_FILE", tmp_path / "ops.json")
-    monkeypatch.setattr(export, "EXPORT_DB", tmp_path / "export.sqlite")
     monkeypatch.setattr(export, "find_source_db", lambda: None)
     monkeypatch.setattr(export, "CONNECT_TIMEOUT", 0.2)
 
@@ -109,26 +112,13 @@ def _rows(conn, table):
 
 # --- backups ---------------------------------------------------------------
 
-def test_backup_coalescing(tmp_path):
+def test_backup_before_every_write(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
-    b1 = backup.ensure_backup(db, window_min=15, now=T0)
-    # within window, file unchanged -> reuse
-    b2 = backup.ensure_backup(db, window_min=15, now=T0 + timedelta(minutes=5))
-    assert b2.path == b1.path
-    assert len(list(backup.BACKUP_DIR.glob("*.sqlite"))) == 1
-
-    # window expired -> new backup
-    b3 = backup.ensure_backup(db, window_min=15, now=T0 + timedelta(minutes=20))
-    assert b3.path != b1.path
-
-    # external change within window -> new backup
-    c = sqlite3.connect(db)
-    c.execute("PRAGMA user_version = 99")
-    c.commit()
-    c.close()
-    b4 = backup.ensure_backup(db, window_min=15, now=T0 + timedelta(minutes=21))
-    assert b4.path != b3.path
-    assert len(list(backup.BACKUP_DIR.glob("*.sqlite"))) == 3
+    b1 = backup.ensure_backup(db, now=T0)
+    b2 = backup.ensure_backup(db, now=T0 + timedelta(seconds=1))
+    # A fresh restore point per write — no coalescing.
+    assert b2.path != b1.path
+    assert len(list(backup.BACKUP_DIR.glob("*.sqlite"))) == 2
 
 
 def test_pruning_keeps_last_k_and_recent(tmp_path):
@@ -692,20 +682,6 @@ def test_progress_gate_blocks_undo(tmp_path):
 
 
 # --- guards ----------------------------------------------------------------
-
-def test_live_write_guard(tmp_path, monkeypatch):
-    db = _baseline(tmp_path / "live.sqlite")
-    # Make the target look like the live source DB.
-    monkeypatch.setattr(export, "find_source_db", lambda: db)
-
-    monkeypatch.delenv("TS_ASSISTANT_ALLOW_LIVE_WRITE", raising=False)
-    with pytest.raises(ExportError):
-        export_project(_new_project(), target_db=db, now=T0)
-
-    monkeypatch.setenv("TS_ASSISTANT_ALLOW_LIVE_WRITE", "1")
-    res = export_project(_new_project(), target_db=db, now=T0)  # now allowed
-    assert res.project_id > 0
-
 
 def test_incompatible_schema_rejected_and_rolled_back(tmp_path):
     from app.db.validate import ValidationError

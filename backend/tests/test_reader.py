@@ -11,23 +11,15 @@ from tests.make_fixture import build
 
 @pytest.fixture()
 def reader(tmp_path, monkeypatch):
-    """Point the app at a fresh fixture DB and reload modules that cache paths."""
+    """Point the app at a fresh fixture DB (read in place) and reload the reader."""
     src = tmp_path / "schedulerdb.sqlite"
     build(src)
     monkeypatch.setenv("TS_ASSISTANT_DB", str(src))
 
-    # data dir under tmp so the working copy doesn't touch the repo.
     from app import config
 
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
-    monkeypatch.setattr(config, "WORKING_DIR", tmp_path / "data" / "working")
     monkeypatch.setattr(config, "BACKUP_DIR", tmp_path / "data" / "backups")
-
-    from app.db import working_copy
-
-    monkeypatch.setattr(
-        working_copy, "WORKING_DB", tmp_path / "data" / "working" / "schedulerdb.sqlite"
-    )
 
     from app.db import reader as reader_mod
 
