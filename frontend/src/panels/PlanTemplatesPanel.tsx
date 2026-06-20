@@ -154,6 +154,7 @@ export default function PlanTemplatesPanel({
                 ))}
                 <option value="__new__">＋ New template…</option>
               </select>
+              <span className="plan-unit">×</span>
               <input
                 className="plan-num"
                 type="number"
@@ -164,7 +165,6 @@ export default function PlanTemplatesPanel({
                   patchItem(i, { desired: Math.max(1, Math.round(Number(e.target.value))) })
                 }
               />
-              <span className="plan-unit">×</span>
               <button
                 className="target-del"
                 title="Remove filter"

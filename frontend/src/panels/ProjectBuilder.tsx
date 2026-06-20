@@ -373,6 +373,7 @@ export default function ProjectBuilder({
                     ))}
                     <option value="__new__">＋ New template…</option>
                   </select>
+                  <span className="plan-unit">×</span>
                   <input
                     className="plan-num"
                     type="number"
@@ -385,7 +386,6 @@ export default function ProjectBuilder({
                       })
                     }
                   />
-                  <span className="plan-unit">×</span>
                   <button
                     className="target-del"
                     title="Remove plan"
