@@ -527,6 +527,7 @@ export default function App() {
             templates={templates}
             planTemplates={planTemplates}
             saving={saving}
+            liveMode={health?.mode === "LIVE"}
             saveResult={saveResult}
             onNewProject={newProject}
             onDiscard={() => {
