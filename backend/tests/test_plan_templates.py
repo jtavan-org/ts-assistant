@@ -12,6 +12,7 @@ from app.main import app
 @pytest.fixture(autouse=True)
 def isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(plan_templates, "PLAN_TEMPLATES_FILE", tmp_path / "plan_templates.json")
+    monkeypatch.setattr(plan_templates, "LEGACY_FILE", tmp_path / "plan_groups.json")
 
 
 def test_store_crud_roundtrip(tmp_path):
@@ -37,6 +38,41 @@ def test_store_crud_roundtrip(tmp_path):
     assert plan_templates.delete(saved.id) is True
     assert plan_templates.delete(saved.id) is False
     assert plan_templates.list_plan_templates() == []
+
+
+def test_legacy_migration(tmp_path):
+    """A pre-rename plan_groups.json is migrated forward (and self-cleans) so saved
+    definitions survive the rename — they persist across launches."""
+    import json
+
+    plan_templates.LEGACY_FILE.write_text(
+        json.dumps([{"id": "abc", "name": "LRGBSHO Nebula", "items": [
+            {"exposure_template_id": 1, "desired": 40},
+        ]}])
+    )
+    loaded = plan_templates.list_plan_templates()
+    assert [t.name for t in loaded] == ["LRGBSHO Nebula"]
+    assert loaded[0].items[0].desired == 40
+    # new file written, legacy renamed so it never re-runs
+    assert plan_templates.PLAN_TEMPLATES_FILE.is_file()
+    assert not plan_templates.LEGACY_FILE.is_file()
+    assert (tmp_path / "plan_groups.json.migrated").is_file()
+    # idempotent + persists on a second read
+    assert [t.name for t in plan_templates.list_plan_templates()] == ["LRGBSHO Nebula"]
+
+
+def test_legacy_migration_merges_current_wins(tmp_path):
+    """If both files exist, current entries override legacy on id collision."""
+    import json
+
+    plan_templates.LEGACY_FILE.write_text(
+        json.dumps([{"id": "x", "name": "old", "items": []}])
+    )
+    plan_templates.PLAN_TEMPLATES_FILE.write_text(
+        json.dumps([{"id": "x", "name": "new", "items": []}])
+    )
+    loaded = plan_templates.list_plan_templates()
+    assert [t.name for t in loaded] == ["new"]
 
 
 def test_api_crud():
