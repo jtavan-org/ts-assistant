@@ -629,23 +629,6 @@ def test_update_refuses_with_progress(tmp_path):
         update_project(pid, spec, target_db=db, now=T0)
 
 
-def test_update_refuses_with_filter_cadence(tmp_path):
-    db = _baseline(tmp_path / "t.sqlite")
-    pid = _export_draft(db).project_id
-    tgt, _plan_id, etid = _first_target_and_plan(db, pid)
-    conn = sqlite3.connect(db)
-    conn.execute(
-        'INSERT INTO filtercadenceitem (targetid, "order", action) VALUES (?, 1, 0)', (tgt,)
-    )
-    conn.commit()
-    conn.close()
-    spec = ProjectSpec(profile_id=PROFILE, name="x", state=0,
-                       targets=[TargetSpec(id=tgt, name="T1", ra_deg=120.0, dec_deg=20.0,
-                                           exposure_plans=[ExposurePlanSpec(exposure=120.0, desired=1, exposure_template_id=etid)])])
-    with pytest.raises(EditNotAllowedError):
-        update_project(pid, spec, target_db=db, now=T0)
-
-
 def test_update_refuses_unknown_project(tmp_path):
     db = _baseline(tmp_path / "t.sqlite")
     spec = ProjectSpec(
@@ -655,6 +638,103 @@ def test_update_refuses_unknown_project(tmp_path):
     )
     with pytest.raises(EditNotAllowedError):
         update_project(99999, spec, target_db=db, now=T0)
+
+
+# --- awh: override exposure order -------------------------------------------
+
+
+def _override_steps(db, target_id):
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        'SELECT "order", action, referenceIdx FROM overrideexposureorderitem'
+        " WHERE targetid = ? ORDER BY \"order\"",
+        (target_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def test_create_writes_override_order(tmp_path):
+    from app.db.writer import OverrideStepSpec
+
+    db = _baseline(tmp_path / "t.sqlite")
+    spec = _new_project()  # one target, plans Ha + OIII (idx 0,1)
+    spec.override_exposure_order = [
+        OverrideStepSpec(action=0, reference_idx=1),  # expose OIII
+        OverrideStepSpec(action=1, reference_idx=-1),  # dither
+        OverrideStepSpec(action=0, reference_idx=0),  # expose Ha
+    ]
+    res = export_project(spec, target_db=db, now=T0)
+    assert _override_steps(db, res.target_ids[0]) == [(1, 0, 1), (2, 1, -1), (3, 0, 0)]
+
+
+def test_create_without_override_writes_nothing(tmp_path):
+    db = _baseline(tmp_path / "t.sqlite")
+    res = export_project(_new_project(), target_db=db, now=T0)
+    assert _override_steps(db, res.target_ids[0]) == []
+
+
+def test_update_rebuilds_override_and_clears_stale_cadence(tmp_path):
+    from app.db.writer import OverrideStepSpec
+
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = _export_draft(db).project_id
+    tgt, _plan_id, etid = _first_target_and_plan(db, pid)
+    # Simulate an existing NINA project with both override + filter cadence rows.
+    conn = sqlite3.connect(db)
+    conn.execute('INSERT INTO overrideexposureorderitem (targetid, "order", action, referenceIdx) VALUES (?,1,0,0)', (tgt,))
+    conn.execute('INSERT INTO filtercadenceitem (targetid, "order", next, action, referenceIdx) VALUES (?,1,0,0,0)', (tgt,))
+    conn.commit()
+    conn.close()
+
+    spec = ProjectSpec(
+        profile_id=PROFILE, name="Draft", state=0,
+        override_exposure_order=[OverrideStepSpec(action=1, reference_idx=-1)],
+        targets=[TargetSpec(id=tgt, name="T1", ra_deg=120.0, dec_deg=20.0,
+                            exposure_plans=[ExposurePlanSpec(exposure=120.0, desired=1, exposure_template_id=etid)])],
+    )
+    update_project(pid, spec, target_db=db, now=T0)
+    assert _override_steps(db, tgt) == [(1, 1, -1)]  # rebuilt from the spec
+    conn = sqlite3.connect(db)
+    cad = conn.execute("SELECT COUNT(*) FROM filtercadenceitem WHERE targetid = ?", (tgt,)).fetchone()[0]
+    conn.close()
+    assert cad == 0  # stale cadence dropped (NINA regenerates from FSF)
+
+
+def test_edit_allowed_for_project_with_override_or_cadence(tmp_path):
+    """awh relaxes the o2c guard: such projects are now editable, not refused."""
+    db = _baseline(tmp_path / "t.sqlite")
+    pid = _export_draft(db).project_id
+    tgt, _plan_id, etid = _first_target_and_plan(db, pid)
+    conn = sqlite3.connect(db)
+    conn.execute('INSERT INTO filtercadenceitem (targetid, "order", next, action, referenceIdx) VALUES (?,1,0,0,0)', (tgt,))
+    conn.commit()
+    conn.close()
+    spec = ProjectSpec(
+        profile_id=PROFILE, name="Edited", state=0,
+        targets=[TargetSpec(id=tgt, name="T1", ra_deg=120.0, dec_deg=20.0,
+                            exposure_plans=[ExposurePlanSpec(exposure=120.0, desired=1, exposure_template_id=etid)])],
+    )
+    update_project(pid, spec, target_db=db, now=T0)  # must NOT raise
+    conn = sqlite3.connect(db)
+    nm = conn.execute("SELECT name FROM project WHERE Id = ?", (pid,)).fetchone()[0]
+    conn.close()
+    assert nm == "Edited"
+
+
+def test_delete_project_clears_override(tmp_path):
+    from app.db.writer import OverrideStepSpec
+
+    db = _baseline(tmp_path / "t.sqlite")
+    spec = ProjectSpec(  # a Draft (state=0) so delete is allowed
+        profile_id=PROFILE, name="Draft", state=0,
+        override_exposure_order=[OverrideStepSpec(action=1, reference_idx=-1)],
+        targets=[TargetSpec(name="T", ra_deg=10.0, dec_deg=10.0,
+                            exposure_plans=[ExposurePlanSpec(filter_name="L", exposure=60.0)])],
+    )
+    res = export_project(spec, target_db=db, now=T0)
+    delete_project(res.project_id, target_db=db, now=T0)
+    assert _override_steps(db, res.target_ids[0]) == []
 
 
 def test_delete_project_removes_all_rows(tmp_path):

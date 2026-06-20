@@ -89,6 +89,13 @@ CREATE TABLE ruleweight (
     projectid INTEGER NOT NULL,
     FOREIGN KEY (projectid) REFERENCES project (Id) ON DELETE CASCADE
 );
+CREATE TABLE overrideexposureorderitem (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    targetid INTEGER NOT NULL,
+    "order" INTEGER NOT NULL,
+    action INTEGER NOT NULL,
+    referenceIdx INTEGER
+);
 """
 
 # NINA's 8 scoring rules with their default weights (mirrors writer.DEFAULT_RULE_WEIGHTS).
@@ -175,10 +182,17 @@ def build(path: Path) -> None:
         # M31: RA 00h42m43s = 0.712313 hours (= 10.6847 deg); Dec +41.269 deg.
         ("M31", 0.712313, 41.269, 35.0, p2),
     )
+    m31_target = tcur.lastrowid
     conn.execute(
         "INSERT INTO exposureplan (profileId, exposure, desired, ExposureTemplateId, TargetId)"
         " VALUES (?, ?, ?, ?, ?)",
-        (PROFILE, 180.0, 60, tmpl_ids["Ha"], tcur.lastrowid),
+        (PROFILE, 180.0, 60, tmpl_ids["Ha"], m31_target),
+    )
+    # An override exposure order on M31: expose plan 0 (Ha), then a Dither step.
+    conn.executemany(
+        'INSERT INTO overrideexposureorderitem (targetid, "order", action, referenceIdx)'
+        " VALUES (?, ?, ?, ?)",
+        [(m31_target, 1, 0, 0), (m31_target, 2, 1, -1)],
     )
     _seed_rule_weights(conn, p2)
 

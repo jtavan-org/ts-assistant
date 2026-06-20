@@ -67,6 +67,17 @@ class RuleWeightSpec(BaseModel):
     weight: float
 
 
+class OverrideStepSpec(BaseModel):
+    """One step in a target's override exposure order (awh).
+
+    ``action`` 0 = take the exposure plan at ``reference_idx`` (0-based index into the
+    target's plans); ``action`` 1 = a Dither step (``reference_idx`` = -1).
+    """
+
+    action: int = 0
+    reference_idx: int = -1
+
+
 class ProjectSpec(BaseModel):
     """A project with its targets — the unit the writer/exporter persists."""
 
@@ -92,6 +103,9 @@ class ProjectSpec(BaseModel):
     enable_grader: bool = True
     flats_handling: int = 0
     smart_exposure_order: bool = False
+    # Override exposure order (awh) — an explicit per-project step list applied to every
+    # target. None/empty → no override (NINA uses its default cadence).
+    override_exposure_order: list[OverrideStepSpec] | None = None
 
 
 class ExposureTemplateSpec(BaseModel):
@@ -181,6 +195,8 @@ WRITTEN_COLUMNS: dict[str, frozenset[str]] = {
     ),
     # ruleweight has no guid column; one row per scoring rule per project.
     "ruleweight": frozenset({"name", "weight", "projectid"}),
+    # override exposure order (awh) — ordered per-target steps; no guid column.
+    "overrideexposureorderitem": frozenset({"targetid", "order", "action", "referenceIdx"}),
 }
 
 # Full column set written by write_exposure_template (qiz.5). Kept separate from the
@@ -327,6 +343,8 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
             )
             plan_ids.append(int(ecur.lastrowid))
 
+        _insert_override_order(conn, target_id, spec.override_exposure_order)
+
     return WriteResult(
         project_id=project_id,
         target_ids=target_ids,
@@ -344,6 +362,18 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
         ).fetchone()
         is not None
     )
+
+
+def _insert_override_order(
+    conn: sqlite3.Connection, target_id: int, steps: list[OverrideStepSpec] | None
+) -> None:
+    """Write a target's override exposure order rows (awh). No-op when empty."""
+    for i, s in enumerate(steps or [], start=1):
+        conn.execute(
+            'INSERT INTO overrideexposureorderitem (targetid, "order", action, referenceIdx)'
+            " VALUES (?, ?, ?, ?)",
+            (target_id, i, s.action, s.reference_idx),
+        )
 
 
 def _insert_plan(
@@ -530,9 +560,21 @@ def update_project(
 
     for old in existing_targets - seen:
         conn.execute("DELETE FROM exposureplan WHERE targetid = ?", (old,))
-        if _table_exists(conn, "flathistory"):
-            conn.execute("DELETE FROM flathistory WHERE targetId = ?", (old,))
+        for tbl, col in (("flathistory", "targetId"), ("overrideexposureorderitem", "targetid"),
+                         ("filtercadenceitem", "targetid")):
+            if _table_exists(conn, tbl):
+                conn.execute(f"DELETE FROM {tbl} WHERE {col} = ?", (old,))
         conn.execute("DELETE FROM target WHERE Id = ?", (old,))
+
+    # Override exposure order (awh) is project-level: rebuild it on every kept/new target.
+    # Also drop stale filter cadence — NINA regenerates it from filterswitchfrequency, and
+    # leaving rows whose referenceIdx no longer matches the edited plans would be wrong.
+    for tid in target_ids:
+        if _table_exists(conn, "overrideexposureorderitem"):
+            conn.execute("DELETE FROM overrideexposureorderitem WHERE targetid = ?", (tid,))
+            _insert_override_order(conn, tid, spec.override_exposure_order)
+        if _table_exists(conn, "filtercadenceitem"):
+            conn.execute("DELETE FROM filtercadenceitem WHERE targetid = ?", (tid,))
 
     return WriteResult(
         project_id=project_id,
@@ -555,8 +597,10 @@ def delete_project(conn: sqlite3.Connection, project_id: int) -> dict[str, int]:
     for old in tids:
         c = conn.execute("DELETE FROM exposureplan WHERE targetid = ?", (old,))
         deleted["exposureplan"] = deleted.get("exposureplan", 0) + c.rowcount
-        if _table_exists(conn, "flathistory"):
-            conn.execute("DELETE FROM flathistory WHERE targetId = ?", (old,))
+        for tbl, col in (("flathistory", "targetId"), ("overrideexposureorderitem", "targetid"),
+                         ("filtercadenceitem", "targetid")):
+            if _table_exists(conn, tbl):
+                conn.execute(f"DELETE FROM {tbl} WHERE {col} = ?", (old,))
     deleted["target"] = conn.execute(
         "DELETE FROM target WHERE projectid = ?", (project_id,)
     ).rowcount

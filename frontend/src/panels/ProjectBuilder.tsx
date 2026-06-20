@@ -1,6 +1,7 @@
 import {
   PROJECT_SETTING_DEFAULTS,
   type ExposureTemplate,
+  type OverrideStep,
   type PlanTemplate,
   type ProjectSettings,
   type RuleWeight,
@@ -8,6 +9,7 @@ import {
 import { templateLabel } from "../templateLabel";
 import RuleWeightsEditor from "./RuleWeightsEditor";
 import ProjectSettingsEditor from "./ProjectSettingsEditor";
+import OverrideOrderEditor from "./OverrideOrderEditor";
 import type { FovBox, PlaceMode } from "../sky/AladinView";
 
 /** One target being framed: a single pointing (1×1) or a mosaic (N×M panes). */
@@ -47,6 +49,8 @@ export interface ProjectDraft {
   ruleWeights: RuleWeight[];
   /** Advanced project settings (psq); seeded from NINA defaults. */
   settings: ProjectSettings;
+  /** Override exposure order (awh); empty = NINA's default cadence. */
+  overrideOrder: OverrideStep[];
 }
 
 interface Props {
@@ -83,6 +87,7 @@ interface Props {
   ruleWeightDefaults: RuleWeight[];
   onPatchRuleWeights: (weights: RuleWeight[]) => void;
   onPatchSettings: (settings: ProjectSettings) => void;
+  onPatchOverrideOrder: (steps: OverrideStep[]) => void;
   onSave: () => void;
 }
 
@@ -121,6 +126,7 @@ export default function ProjectBuilder({
   ruleWeightDefaults,
   onPatchRuleWeights,
   onPatchSettings,
+  onPatchOverrideOrder,
   onSave,
 }: Props) {
   const hasFov = !!fov && fov.widthDeg > 0 && fov.heightDeg > 0;
@@ -441,6 +447,12 @@ export default function ProjectBuilder({
               settings={draft.settings}
               defaults={PROJECT_SETTING_DEFAULTS}
               onChange={onPatchSettings}
+            />
+
+            <OverrideOrderEditor
+              steps={draft.overrideOrder}
+              plans={plans}
+              onChange={onPatchOverrideOrder}
             />
 
             <button

@@ -365,6 +365,14 @@ def _delete_provenanced_rows(conn: sqlite3.Connection, rows: list[ProvRow]) -> d
                 ).fetchone()[0]
                 if refs:
                     continue
+            # A target's override-order rows (awh) aren't provenanced and have no FK —
+            # remove them with the target so undo doesn't leave orphans.
+            if table == "target":
+                for tbl in ("overrideexposureorderitem", "filtercadenceitem"):
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND lower(name)=?", (tbl,)
+                    ).fetchone():
+                        conn.execute(f"DELETE FROM {tbl} WHERE targetid = ?", (r.id,))
             if table in GUIDLESS_TABLES:  # no guid to match on — delete by Id
                 cur = conn.execute(f"DELETE FROM {table} WHERE Id = ?", (r.id,))
             elif r.guid is None:
@@ -396,25 +404,9 @@ def _assert_editable(conn: sqlite3.Connection, project_id: int) -> None:
         raise ProgressError(
             f"project {project_id} has captured subframes; refusing to edit started work"
         )
-    # filtercadence / override-order reference a target's plans by positional index, so
-    # editing plans would corrupt them — refuse rather than silently break them.
-    tids = [r[0] for r in conn.execute("SELECT Id FROM target WHERE projectid = ?", (project_id,))]
-    if tids:
-        placeholders = ",".join("?" * len(tids))
-        for table in ("filtercadenceitem", "overrideexposureorderitem"):
-            exists = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND lower(name)=?", (table,)
-            ).fetchone()
-            if not exists:
-                continue
-            n = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE targetid IN ({placeholders})", tids
-            ).fetchone()[0]
-            if n:
-                raise EditNotAllowedError(
-                    "this project uses a custom filter cadence or exposure order, which "
-                    "TS Assistant can't edit yet"
-                )
+    # Filter cadence + override exposure order used to be refused here; awh now manages
+    # them (the editor rebuilds override order, and stale cadence is dropped so NINA
+    # regenerates it from filterswitchfrequency), so editing such projects is allowed.
 
 
 def update_project(

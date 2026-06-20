@@ -26,6 +26,13 @@ export interface ExposurePlan {
   exposure_template_id: number | null;
 }
 
+/** One step of an override exposure order (awh). action 0 = expose the plan at
+ * reference_idx; action 1 = a Dither step (reference_idx = -1). */
+export interface OverrideStep {
+  action: number;
+  reference_idx: number;
+}
+
 export interface Target {
   id: number;
   name: string;
@@ -38,6 +45,8 @@ export interface Target {
   project_id: number;
   project_name: string;
   exposure_plans: ExposurePlan[];
+  /** Override exposure order steps (awh), in order; empty = NINA's default. */
+  override_exposure_order?: OverrideStep[];
 }
 
 /** Advanced project settings (psq) — NINA's project-tab knobs. */
@@ -243,6 +252,8 @@ export interface ExportRequest extends Partial<ProjectSettings> {
   targets: ExportTargetInput[];
   /** Optional per-rule weight overrides (qiz.3); omitted → NINA defaults. */
   rule_weights?: RuleWeight[];
+  /** Override exposure order (awh); omitted/empty → NINA's default cadence. */
+  override_exposure_order?: OverrideStep[];
 }
 
 export interface ExportResult {
