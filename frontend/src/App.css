@@ -173,6 +173,16 @@
   width: 100%;
   height: 100%;
 }
+.aladin-label-overlay {
+  /* Sibling canvas stacked over Aladin's own canvases, carrying the target-frame
+     name labels drawn rotated to match each box's bottom edge. It must never
+     intercept pointers (pan/zoom belong to Aladin) and sits below the placement
+     capture layer (z-index 5). Sized in JS to the host at devicePixelRatio. */
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
 .mosaic-capture {
   /* Transparent layer shown only while placing a mosaic; it intercepts clicks
      and drags so Aladin's own pan handlers don't fight the placement. */

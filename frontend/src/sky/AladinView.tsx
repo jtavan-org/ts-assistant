@@ -9,12 +9,7 @@ import {
 } from "react";
 import A from "aladin-lite";
 import type { ExposurePlan, Survey, Target } from "../api";
-import {
-  fovCorners,
-  fovTopTriangle,
-  sphericalMidpoint,
-  type MosaicPanel,
-} from "./fov";
+import { fovCorners, fovTopTriangle, type MosaicPanel } from "./fov";
 import { NAMED_OBJECTS, objectLabel } from "./skyObjects";
 
 // A named object is drawn only when its angular size is at least this fraction
@@ -27,27 +22,14 @@ const MIN_FOV_FRACTION = 0.02;
 // FOV, where stacked names would be unreadable) but appear as you zoom in.
 const LABEL_MIN_FOV_FRACTION = 0.04;
 
-// Marker size for the label-only catalogs (the box already marks the position, so
-// the marker itself is drawn transparent — see the catalog `color` below).
-// IMPORTANT: Aladin caches a circle marker as `ctx.arc(C/2, C/2, C/2 - 1, ...)`
-// where C is sourceSize, so any sourceSize < 2 yields a NEGATIVE radius and throws
-// `DOMException: Negative radius` inside the draw loop — which silently kills all
-// repainting (pan + survey switching freeze while DOM popups still work). Keep this
-// >= 2; 5 matches the named-object label catalogs. (Regression fix.)
-const LABEL_MARKER_SIZE = 5;
-// Transparent marker so only the text shows; label color is set per-catalog.
-const INVISIBLE_MARKER = "rgba(0, 0, 0, 0)";
-
-// The bottom edge of a fovCorners() polygon runs between corners 2 (-w,-h) and
-// 3 (+w,-h); its spherical midpoint is where the name label is anchored.
-function bottomEdgeMidpoint(
-  corners: [number, number][],
-): [number, number] | null {
-  if (corners.length < 4) return null;
-  const [r1, d1] = corners[2];
-  const [r2, d2] = corners[3];
-  return sphericalMidpoint(r1, d1, r2, d2);
-}
+// Frame-matched label colors: cyan for the per-target FOV boxes, amber for the
+// project-draft boxes (mirroring the overlay line colors).
+const FOV_LABEL_COLOR = "#00e5ff";
+const DRAFT_LABEL_COLOR = "#ffb300";
+const LABEL_FONT = "12px sans-serif";
+// Gap (screen px) between the box's bottom edge and the text baseline, so the
+// rotated name hugs the edge from just outside it rather than overlapping the box.
+const LABEL_EDGE_GAP = 3;
 
 /** Width of a box in degrees, from the spread of its corner RA/Decs (declutter). */
 function boxWidthDeg(corners: [number, number][]): number {
@@ -164,10 +146,13 @@ function AladinView(
   const aladinRef = useRef<any>(null);
   const catalogRef = useRef<any>(null);
   const fovOverlayRef = useRef<any>(null);
-  const fovLabelRef = useRef<any>(null);
   const draftOverlayRef = useRef<any>(null);
-  const draftLabelRef = useRef<any>(null);
-  const boxZoomTimerRef = useRef<number>(0);
+  // Sibling canvas, stacked over Aladin's own canvases, on which the target-frame
+  // name labels are drawn rotated to match each box's bottom edge (see drawLabels).
+  const labelCanvasRef = useRef<HTMLCanvasElement>(null);
+  // rAF handle that coalesces label redraws triggered by pan/zoom/resize so we
+  // repaint at most once per frame and the labels track the boxes without lag.
+  const labelRafRef = useRef<number>(0);
   const coverageOverlayRef = useRef<any>(null);
   const namedCircleRef = useRef<any>(null);
   const namedLabelRef = useRef<any>(null);
@@ -248,21 +233,10 @@ function AladinView(
       aladin.addOverlay(fovOverlay);
       fovOverlayRef.current = fovOverlay;
 
-      // Name labels for the cyan per-target FOV boxes. A label-only catalog (the
-      // source marker is transparent) carries the text in the box's frame color,
-      // mirroring the named-object label catalog below.
-      const fovLabels = A.catalog({
-        name: "Target labels",
-        sourceSize: LABEL_MARKER_SIZE,
-        color: INVISIBLE_MARKER,
-        shape: "circle",
-        displayLabel: true,
-        labelColumn: "label",
-        labelColor: "#00e5ff",
-        labelFont: "12px sans-serif",
-      });
-      aladin.addCatalog(fovLabels);
-      fovLabelRef.current = fovLabels;
+      // The cyan FOV-box and amber draft-box NAME labels are no longer Aladin
+      // catalog source labels (those are always screen-upright and overlapped the
+      // frames). They are drawn on the sibling label canvas instead — rotated to
+      // match each box's bottom edge — by drawLabels()/scheduleLabelRedraw().
 
       // Project-draft overlay, amber so it reads distinctly from the cyan
       // per-target FOV boxes that can be shown at the same time.
@@ -272,20 +246,6 @@ function AladinView(
       });
       aladin.addOverlay(draftOverlay);
       draftOverlayRef.current = draftOverlay;
-
-      // Name labels for the amber project-draft boxes, in their frame color.
-      const draftLabels = A.catalog({
-        name: "Draft target labels",
-        sourceSize: LABEL_MARKER_SIZE,
-        color: INVISIBLE_MARKER,
-        shape: "circle",
-        displayLabel: true,
-        labelColumn: "label",
-        labelColor: "#ffb300",
-        labelFont: "12px sans-serif",
-      });
-      aladin.addCatalog(draftLabels);
-      draftLabelRef.current = draftLabels;
 
       // Coverage Area-of-Interest preview (the raw dragged rectangle), drawn
       // white/dashed during a coverage drag so it reads apart from the amber grid.
@@ -371,14 +331,13 @@ function AladinView(
 
       // Re-cull the named-object overlay when the zoom changes, so only objects
       // large enough on-screen are drawn (debounced past the zoom animation).
+      // NOTE: aladin.on() keeps only ONE handler per event name, so the target-box
+      // label redraw must live inside this single zoomChanged handler.
       aladin.on("zoomChanged", () => {
-        // Re-cull the target-box name labels too: which boxes are big enough to
-        // label depends on the current FOV, so the set changes as you zoom.
-        window.clearTimeout(boxZoomTimerRef.current);
-        boxZoomTimerRef.current = window.setTimeout(() => {
-          syncFovLabels(targetsRef.current, fovRef.current);
-          syncDraftLabels(draftRef.current);
-        }, 120);
+        // The target-frame name labels follow the view: their bottom-edge angle,
+        // screen position and which boxes are big enough to label all change with
+        // zoom, so repaint the label canvas (coalesced to one frame).
+        scheduleLabelRedraw();
         if (!showNamedRef.current) return;
         window.clearTimeout(namedZoomTimerRef.current);
         namedZoomTimerRef.current = window.setTimeout(
@@ -386,6 +345,10 @@ function AladinView(
           120,
         );
       });
+      // Labels must track panning and host resizes too. These run every frame of a
+      // drag; scheduleLabelRedraw() coalesces them to one repaint per animation frame.
+      aladin.on("positionChanged", () => scheduleLabelRedraw());
+      aladin.on("resizeChanged", () => scheduleLabelRedraw());
 
       syncCatalog(targetsRef.current);
       syncFov(targetsRef.current, fovRef.current);
@@ -414,6 +377,10 @@ function AladinView(
     return () => {
       disposed = true;
       ro?.disconnect();
+      if (labelRafRef.current) {
+        window.cancelAnimationFrame(labelRafRef.current);
+        labelRafRef.current = 0;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -467,39 +434,10 @@ function AladinView(
         );
       }
     }
-    syncFovLabels(items, box);
     // removeAll()/add() don't repaint until the view changes; force it so the
     // boxes appear/disappear immediately when toggled.
     aladinRef.current?.view?.requestRedraw?.();
-  }
-
-  // Name labels for the per-target FOV boxes (cyan). One label per target, anchored
-  // on the box's bottom-edge midpoint and culled at wide FOV (see LABEL_MIN_FOV_FRACTION).
-  function syncFovLabels(items: Target[], box: FovBox | null) {
-    const labels = fovLabelRef.current;
-    if (!labels) return;
-    labels.removeAll();
-    if (!box) {
-      aladinRef.current?.view?.requestRedraw?.();
-      return;
-    }
-    const minWidthDeg = currentFovDeg(aladinRef.current) * LABEL_MIN_FOV_FRACTION;
-    const sources: any[] = [];
-    for (const t of items) {
-      const corners = fovCorners(
-        t.ra_deg,
-        t.dec_deg,
-        box.widthDeg,
-        box.heightDeg,
-        t.rotation,
-      );
-      if (boxWidthDeg(corners) < minWidthDeg) continue;
-      const anchor = bottomEdgeMidpoint(corners);
-      if (!anchor || !t.name) continue;
-      sources.push(A.source(anchor[0], anchor[1], { label: t.name }));
-    }
-    if (sources.length) labels.addSources(sources);
-    aladinRef.current?.view?.requestRedraw?.();
+    scheduleLabelRedraw();
   }
 
   function syncDraft(targets: TargetRender[] | null) {
@@ -512,40 +450,142 @@ function AladinView(
         if (t.panels.length) ov.add(A.polygon(t.triangle)); // orientation marker
       }
     }
-    syncDraftLabels(targets);
     aladinRef.current?.view?.requestRedraw?.();
+    scheduleLabelRedraw();
   }
 
-  // Name labels for the amber project-draft boxes. A draft "box" can be a mosaic of
-  // panels, so we anchor the label on the bottom edge of the whole-target footprint
-  // (the union of panel corners) and gate it on that footprint's on-screen width.
-  function syncDraftLabels(targets: TargetRender[] | null) {
-    const labels = draftLabelRef.current;
-    if (!labels) return;
-    labels.removeAll();
-    if (!targets) {
-      aladinRef.current?.view?.requestRedraw?.();
-      return;
+  // ----- Rotated target-frame name labels (sibling canvas) -------------------
+  //
+  // Aladin catalog source labels are always screen-upright and frequently
+  // overlapped the FOV/draft frames. Instead we draw each target NAME on a
+  // dedicated overlay canvas, rotated to lie along its box's bottom edge (just
+  // outside it). The overlay is fully decoupled from Aladin's own draw loop, so
+  // nothing here can stall or crash Aladin's repaint (the ex9 negative-radius
+  // class of bug lived inside Aladin's catalog draw; this code never touches it).
+
+  /** Project a sky point to host-relative CSS pixels, or null if off-screen. */
+  function worldToHostXY(ra: number, dec: number): { x: number; y: number } | null {
+    const p = aladinRef.current?.world2pix?.(ra, dec);
+    if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
+    return { x: p[0], y: p[1] };
+  }
+
+  /**
+   * Draw one frame name centered along the bottom edge defined by its two
+   * bottom corners (sky [ra,dec]), rotated to match the edge and hugging it from
+   * just outside. Returns silently if either corner projects off-screen.
+   */
+  function drawEdgeLabel(
+    ctx: CanvasRenderingContext2D,
+    name: string,
+    leftCorner: [number, number], // bottom edge corner at -w (fovCorners idx 2)
+    rightCorner: [number, number], // bottom edge corner at +w (fovCorners idx 3)
+    color: string,
+  ) {
+    const a = worldToHostXY(leftCorner[0], leftCorner[1]);
+    const b = worldToHostXY(rightCorner[0], rightCorner[1]);
+    if (!a || !b) return;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    // Screen angle of the bottom edge, left corner -> right corner.
+    let angle = Math.atan2(b.y - a.y, b.x - a.x);
+    // The box is "below" the bottom edge in screen space. With +y pointing down,
+    // the outward normal (pointing away from the box, where the text should sit)
+    // is the edge direction rotated by -90°. We place the text on that side by
+    // offsetting along that normal. Keep text upright-readable: if the edge angle
+    // would render the baseline upside-down (|angle| > 90°), flip by π and put the
+    // text on the opposite side so the baseline still hugs the outside of the box.
+    let offset = -LABEL_EDGE_GAP; // textBaseline 'bottom': baseline above the edge line
+    if (angle > Math.PI / 2 || angle < -Math.PI / 2) {
+      angle += Math.PI;
+      offset = LABEL_EDGE_GAP; // flipped: keep the text on the box's outside
     }
-    const minWidthDeg = currentFovDeg(aladinRef.current) * LABEL_MIN_FOV_FRACTION;
-    const sources: any[] = [];
-    for (const t of targets) {
+    ctx.save();
+    ctx.translate(midX, midY);
+    ctx.rotate(angle);
+    ctx.font = LABEL_FONT;
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    // 'bottom'/'top' chosen so positive `offset` sits the text on the outside of
+    // the frame edge regardless of the flip above.
+    ctx.textBaseline = offset < 0 ? "bottom" : "top";
+    ctx.fillText(name, 0, offset);
+    ctx.restore();
+  }
+
+  /**
+   * Repaint the whole label canvas: size it to the host (devicePixelRatio-aware),
+   * then draw each visible FOV-box and draft-box name along its bottom edge.
+   * Declutter (LABEL_MIN_FOV_FRACTION) and frame colors are preserved.
+   */
+  function drawLabels() {
+    const canvas = labelCanvasRef.current;
+    const host = divRef.current;
+    const aladin = aladinRef.current;
+    if (!canvas || !host || !aladin) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Match the canvas backing store to the host's CSS size at the device pixel
+    // ratio, so text is crisp and 1 canvas unit == 1 CSS px after the scale.
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = host.clientWidth;
+    const cssH = host.clientHeight;
+    const pxW = Math.max(1, Math.round(cssW * dpr));
+    const pxH = Math.max(1, Math.round(cssH * dpr));
+    if (canvas.width !== pxW) canvas.width = pxW;
+    if (canvas.height !== pxH) canvas.height = pxH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const minWidthDeg = currentFovDeg(aladin) * LABEL_MIN_FOV_FRACTION;
+
+    // Per-target FOV boxes (cyan). Bottom edge = corners 2 (-w,-h) and 3 (+w,-h).
+    const box = fovRef.current;
+    if (box) {
+      for (const t of targetsRef.current) {
+        if (!t.name) continue;
+        const corners = fovCorners(
+          t.ra_deg,
+          t.dec_deg,
+          box.widthDeg,
+          box.heightDeg,
+          t.rotation,
+        );
+        if (corners.length < 4 || boxWidthDeg(corners) < minWidthDeg) continue;
+        drawEdgeLabel(ctx, t.name, corners[2], corners[3], FOV_LABEL_COLOR);
+      }
+    }
+
+    // Project-draft boxes (amber). A draft target can be a mosaic of panels, so
+    // pick the overall bottom edge: the two lowest-Dec among every panel's bottom
+    // corners (each panel's corners 2/3), matching the per-box bottom-edge convention.
+    for (const t of draftRef.current ?? []) {
       if (!t.name || !t.panels.length) continue;
       const allCorners = t.panels.flatMap((p) => p.corners);
       if (boxWidthDeg(allCorners) < minWidthDeg) continue;
-      // Anchor on the bottom edge of the whole-target footprint: every panel's
-      // corners 2 (-w,-h) and 3 (+w,-h) lie on a bottom edge, so the two
-      // lowest-Dec such corners bracket the overall bottom edge — label at their
-      // spherical midpoint, matching the per-target FOV box anchor.
       const bottoms = t.panels
         .flatMap((p) => [p.corners[2], p.corners[3]])
-        .sort((a, b) => a[1] - b[1]);
-      const [c1, c2] = [bottoms[0], bottoms[1] ?? bottoms[0]];
-      const anchor = sphericalMidpoint(c1[0], c1[1], c2[0], c2[1]);
-      sources.push(A.source(anchor[0], anchor[1], { label: t.name }));
+        .sort((c1, c2) => c1[1] - c2[1]);
+      const left = bottoms[0];
+      const right = bottoms[1] ?? bottoms[0];
+      // Order the pair left->right in screen space so the edge angle is consistent.
+      drawEdgeLabel(ctx, t.name, left, right, DRAFT_LABEL_COLOR);
     }
-    if (sources.length) labels.addSources(sources);
-    aladinRef.current?.view?.requestRedraw?.();
+  }
+
+  /** Coalesce label repaints to one per animation frame (pan fires per-frame). */
+  function scheduleLabelRedraw() {
+    if (labelRafRef.current) return;
+    labelRafRef.current = window.requestAnimationFrame(() => {
+      labelRafRef.current = 0;
+      try {
+        drawLabels();
+      } catch {
+        // A projection/draw hiccup must never wedge the overlay loop; the next
+        // pan/zoom will reschedule a clean repaint.
+      }
+    });
   }
 
   // Named-object overlay: a circle sized to each object's angular extent plus a
@@ -719,6 +759,9 @@ function AladinView(
   return (
     <div className="aladin-wrap">
       <div ref={divRef} className="aladin-host" />
+      {/* Rotated target-frame name labels, drawn over Aladin's canvases. Sits
+          below the placement capture layer (z-index 5) and ignores pointers. */}
+      <canvas ref={labelCanvasRef} className="aladin-label-overlay" />
       {placeMode && (
         <div
           className={
