@@ -3186,6 +3186,168 @@
 "catalog":"Sh2"
 },
 {
+"id":"NGC 1023",
+"name":"",
+"ra":40.10004166666666,
+"dec":39.06327777777778,
+"sizeArcmin":7.4,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1055",
+"name":"",
+"ra":40.43845833333334,
+"dec":0.4431666666666667,
+"sizeArcmin":6.92,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1232",
+"name":"",
+"ra":47.439625,
+"dec":-20.579305555555557,
+"sizeArcmin":6.79,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1269",
+"name":"",
+"ra":49.32745833333333,
+"dec":-41.10805555555556,
+"sizeArcmin":11.17,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1313",
+"name":"",
+"ra":49.566874999999996,
+"dec":-66.49825,
+"sizeArcmin":11.07,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1316",
+"name":"Fornax A",
+"ra":50.673833333333334,
+"dec":-37.208222222222226,
+"sizeArcmin":13.46,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 134",
+"name":"",
+"ra":7.591541666666667,
+"dec":-33.24402777777778,
+"sizeArcmin":8.38,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1365",
+"name":"",
+"ra":53.40154166666666,
+"dec":-36.140388888888886,
+"sizeArcmin":12.02,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1398",
+"name":"",
+"ra":54.71720833333333,
+"dec":-26.337833333333332,
+"sizeArcmin":6.95,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1399",
+"name":"",
+"ra":54.620958333333334,
+"dec":-35.45066666666667,
+"sizeArcmin":8.51,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1433",
+"name":"",
+"ra":55.506458333333335,
+"dec":-47.22208333333334,
+"sizeArcmin":6.19,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1448",
+"name":"",
+"ra":56.133,
+"dec":-44.64483333333333,
+"sizeArcmin":8.02,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1512",
+"name":"",
+"ra":60.976166666666664,
+"dec":-43.34886111111111,
+"sizeArcmin":8.43,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1532",
+"name":"",
+"ra":63.01804166666666,
+"dec":-32.87422222222222,
+"sizeArcmin":11.27,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1553",
+"name":"",
+"ra":64.04362499999999,
+"dec":-55.780138888888885,
+"sizeArcmin":6.25,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1560",
+"name":"",
+"ra":68.20454166666667,
+"dec":71.8831111111111,
+"sizeArcmin":8.3,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1566",
+"name":"",
+"ra":65.00175,
+"dec":-54.93780555555555,
+"sizeArcmin":7.23,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 1672",
+"name":"",
+"ra":71.42708333333333,
+"dec":-59.247194444444446,
+"sizeArcmin":6.14,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
 "id":"NGC 2024",
 "name":"Flame Nebula",
 "ra":85.43,
@@ -3195,12 +3357,561 @@
 "catalog":"NGC"
 },
 {
+"id":"NGC 2280",
+"name":"",
+"ra":101.204625,
+"dec":-27.63861111111111,
+"sizeArcmin":6.53,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 24",
+"name":"",
+"ra":2.4855833333333335,
+"dec":-24.96313888888889,
+"sizeArcmin":6.18,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2613",
+"name":"",
+"ra":128.34516666666667,
+"dec":-22.973666666666666,
+"sizeArcmin":7.62,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2683",
+"name":"",
+"ra":133.17220833333334,
+"dec":33.421749999999996,
+"sizeArcmin":9.48,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2835",
+"name":"",
+"ra":139.47045833333334,
+"dec":-22.354666666666667,
+"sizeArcmin":6.43,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2841",
+"name":"",
+"ra":140.51095833333335,
+"dec":50.97652777777778,
+"sizeArcmin":6.9,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2903",
+"name":"",
+"ra":143.042125,
+"dec":21.500833333333333,
+"sizeArcmin":11.94,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 292",
+"name":"Small Magellanic Cloud",
+"ra":13.186583333333333,
+"dec":-72.8286111111111,
+"sizeArcmin":299.92,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 2997",
+"name":"",
+"ra":146.41162500000002,
+"dec":-31.191083333333335,
+"sizeArcmin":10.26,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3079",
+"name":"",
+"ra":150.49083333333334,
+"dec":55.67977777777777,
+"sizeArcmin":8.18,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3109",
+"name":"",
+"ra":150.77866666666668,
+"dec":-26.15958333333333,
+"sizeArcmin":16.0,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3184",
+"name":"",
+"ra":154.57025,
+"dec":41.424055555555555,
+"sizeArcmin":7.4,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3198",
+"name":"",
+"ra":154.97895833333334,
+"dec":45.54961111111111,
+"sizeArcmin":6.46,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3263",
+"name":"",
+"ra":157.30566666666664,
+"dec":-44.12291666666667,
+"sizeArcmin":7.83,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3344",
+"name":"",
+"ra":160.87979166666668,
+"dec":24.922222222222224,
+"sizeArcmin":6.7,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3432",
+"name":"",
+"ra":163.12970833333335,
+"dec":36.61877777777778,
+"sizeArcmin":7.41,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3511",
+"name":"",
+"ra":165.84904166666666,
+"dec":-23.086777777777776,
+"sizeArcmin":6.04,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3521",
+"name":"",
+"ra":166.45241666666666,
+"dec":-0.03586111111111111,
+"sizeArcmin":8.32,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3585",
+"name":"",
+"ra":168.32120833333335,
+"dec":-26.754833333333334,
+"sizeArcmin":6.61,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3621",
+"name":"",
+"ra":169.56879166666667,
+"dec":-32.814055555555555,
+"sizeArcmin":9.79,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3628",
+"name":"Hamburger Galaxy",
+"ra":170.07,
+"dec":13.59,
+"sizeArcmin":14,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3717",
+"name":"",
+"ra":172.88329166666668,
+"dec":-30.307750000000002,
+"sizeArcmin":6.52,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3923",
+"name":"",
+"ra":177.75704166666665,
+"dec":-28.80602777777778,
+"sizeArcmin":6.89,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 3953",
+"name":"",
+"ra":178.4538333333333,
+"dec":52.32677777777778,
+"sizeArcmin":6.14,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4088",
+"name":"",
+"ra":181.39245833333334,
+"dec":50.539027777777775,
+"sizeArcmin":7.01,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4157",
+"name":"",
+"ra":182.76820833333335,
+"dec":50.48466666666667,
+"sizeArcmin":6.22,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4214",
+"name":"",
+"ra":183.91320833333333,
+"dec":36.326888888888895,
+"sizeArcmin":6.79,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4216",
+"name":"",
+"ra":183.97683333333333,
+"dec":13.149388888888888,
+"sizeArcmin":7.82,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4293",
+"name":"",
+"ra":185.3037083333333,
+"dec":18.38238888888889,
+"sizeArcmin":6.24,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4302",
+"name":"",
+"ra":185.427,
+"dec":14.598305555555557,
+"sizeArcmin":6.0,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4438",
+"name":"Eyes",
+"ra":186.93995833333332,
+"dec":13.008833333333333,
+"sizeArcmin":9.16,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4490",
+"name":"",
+"ra":187.651,
+"dec":41.64388888888889,
+"sizeArcmin":6.71,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 45",
+"name":"",
+"ra":3.516625,
+"dec":-23.182083333333335,
+"sizeArcmin":6.18,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4517",
+"name":"",
+"ra":188.18995833333335,
+"dec":0.11502777777777778,
+"sizeArcmin":9.02,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4526",
+"name":"",
+"ra":188.512875,
+"dec":7.699527777777778,
+"sizeArcmin":6.95,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4527",
+"name":"",
+"ra":188.53508333333335,
+"dec":2.6536666666666666,
+"sizeArcmin":6.3,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4535",
+"name":"",
+"ra":188.58462500000002,
+"dec":8.197750000000001,
+"sizeArcmin":8.15,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4536",
+"name":"",
+"ra":188.61270833333333,
+"dec":2.1881388888888886,
+"sizeArcmin":7.08,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4636",
+"name":"",
+"ra":190.70762499999998,
+"dec":2.687777777777778,
+"sizeArcmin":6.35,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4656",
+"name":"Hockey Stick Galaxy",
+"ra":190.99,
+"dec":32.17,
+"sizeArcmin":15,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4725",
+"name":"",
+"ra":192.61075,
+"dec":25.500805555555555,
+"sizeArcmin":9.71,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4731",
+"name":"",
+"ra":192.75454166666665,
+"dec":-6.393055555555556,
+"sizeArcmin":6.32,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4753",
+"name":"",
+"ra":193.092125,
+"dec":-1.1996944444444444,
+"sizeArcmin":6.49,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 4762",
+"name":"",
+"ra":193.23354166666667,
+"dec":11.230805555555555,
+"sizeArcmin":8.26,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5023",
+"name":"",
+"ra":198.0525,
+"dec":44.04122222222222,
+"sizeArcmin":6.22,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5033",
+"name":"",
+"ra":198.36445833333335,
+"dec":36.593944444444446,
+"sizeArcmin":9.84,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5068",
+"name":"",
+"ra":199.728375,
+"dec":-21.03911111111111,
+"sizeArcmin":7.48,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5084",
+"name":"",
+"ra":200.0705,
+"dec":-21.827583333333333,
+"sizeArcmin":9.93,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5102",
+"name":"",
+"ra":200.49004166666668,
+"dec":-36.630250000000004,
+"sizeArcmin":9.71,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5170",
+"name":"",
+"ra":202.45329166666664,
+"dec":-17.966416666666667,
+"sizeArcmin":7.96,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5746",
+"name":"",
+"ra":221.233,
+"dec":1.9549999999999998,
+"sizeArcmin":7.24,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 5907",
+"name":"Splinter Galaxy",
+"ra":228.97,
+"dec":56.33,
+"sizeArcmin":13,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 625",
+"name":"",
+"ra":23.769291666666668,
+"dec":-41.43619444444444,
+"sizeArcmin":6.55,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 672",
+"name":"",
+"ra":26.977166666666665,
+"dec":27.43277777777778,
+"sizeArcmin":7.01,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 7090",
+"name":"",
+"ra":324.12025,
+"dec":-54.55733333333333,
+"sizeArcmin":8.15,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 7410",
+"name":"",
+"ra":343.75395833333334,
+"dec":-39.66133333333333,
+"sizeArcmin":6.01,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 7582",
+"name":"",
+"ra":349.59791666666666,
+"dec":-42.370555555555555,
+"sizeArcmin":6.95,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 7640",
+"name":"",
+"ra":350.5274166666667,
+"dec":40.84541666666667,
+"sizeArcmin":8.09,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 7793",
+"name":"",
+"ra":359.457625,
+"dec":-32.59102777777778,
+"sizeArcmin":10.42,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
 "id":"NGC 869",
 "name":"Double Cluster",
 "ra":35.0,
 "dec":57.13,
 "sizeArcmin":60,
 "kind":"cluster",
+"catalog":"NGC"
+},
+{
+"id":"NGC 908",
+"name":"",
+"ra":35.769041666666666,
+"dec":-21.23386111111111,
+"sizeArcmin":6.14,
+"kind":"galaxy",
+"catalog":"NGC"
+},
+{
+"id":"NGC 925",
+"name":"",
+"ra":36.82033333333334,
+"dec":33.57916666666667,
+"sizeArcmin":10.72,
+"kind":"galaxy",
 "catalog":"NGC"
 },
 {
@@ -4354,5 +5065,86 @@
 "sizeArcmin":95.0,
 "kind":"supernova",
 "catalog":"SNR"
+},
+{
+"id":"B142",
+"name":"Barnard's E",
+"ra":294.9222,
+"dec":10.5185,
+"sizeArcmin":40.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B143",
+"name":"Barnard's E",
+"ra":295.3545,
+"dec":11.0066,
+"sizeArcmin":30.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B150",
+"name":"Seahorse Nebula",
+"ra":312.6653,
+"dec":60.3019,
+"sizeArcmin":60.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B33",
+"name":"Horsehead Nebula",
+"ra":85.2205,
+"dec":-2.4658,
+"sizeArcmin":4.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B68",
+"name":"Barnard 68",
+"ra":260.652,
+"dec":-23.7911,
+"sizeArcmin":4.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B72",
+"name":"Snake Nebula",
+"ra":260.8998,
+"dec":-23.6215,
+"sizeArcmin":4.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"B86",
+"name":"Ink Spot",
+"ra":270.7565,
+"dec":-27.8694,
+"sizeArcmin":5.0,
+"kind":"dark",
+"catalog":"B"
+},
+{
+"id":"LDN 1235",
+"name":"Dark Shark Nebula",
+"ra":333.0,
+"dec":73.6,
+"sizeArcmin":60.0,
+"kind":"dark",
+"catalog":"LDN"
+},
+{
+"id":"LDN 1251",
+"name":"Baby Eagle Nebula",
+"ra":339.5,
+"dec":75.2,
+"sizeArcmin":60.0,
+"kind":"dark",
+"catalog":"LDN"
 }
 ]

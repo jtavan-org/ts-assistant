@@ -116,6 +116,8 @@ function AladinView(
   const coverageOverlayRef = useRef<any>(null);
   const namedCircleRef = useRef<any>(null);
   const namedLabelRef = useRef<any>(null);
+  const darkCircleRef = useRef<any>(null);
+  const darkLabelRef = useRef<any>(null);
   const namedZoomTimerRef = useRef<number>(0);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -230,6 +232,27 @@ function AladinView(
       });
       aladin.addCatalog(namedLabels);
       namedLabelRef.current = namedLabels;
+
+      // Dark nebulae (Barnard / LDN) get their own dusty-orange layer so the
+      // absorption silhouettes read distinctly from the green emission/galaxy
+      // rings — they sit along the disk and often overlap bright objects.
+      const darkCircles = A.graphicOverlay({ color: "#d9974f", lineWidth: 1 });
+      aladin.addOverlay(darkCircles);
+      darkCircleRef.current = darkCircles;
+
+      const darkLabels = A.catalog({
+        name: "Dark nebulae",
+        sourceSize: 5,
+        color: "#d9974f",
+        shape: "circle",
+        displayLabel: true,
+        labelColumn: "label",
+        labelColor: "#e7b277",
+        labelFont: "13px sans-serif",
+        onClick: "showPopup",
+      });
+      aladin.addCatalog(darkLabels);
+      darkLabelRef.current = darkLabels;
 
       // Aladin fires objectClicked(source) on a marker and objectClicked(null)
       // on empty sky. Recenter on a marker; close the popup on empty sky (so the
@@ -368,9 +391,13 @@ function AladinView(
   function syncNamed(show: boolean | undefined) {
     const circles = namedCircleRef.current;
     const labels = namedLabelRef.current;
-    if (!circles || !labels) return;
+    const darkCircles = darkCircleRef.current;
+    const darkLabels = darkLabelRef.current;
+    if (!circles || !labels || !darkCircles || !darkLabels) return;
     circles.removeAll();
     labels.removeAll();
+    darkCircles.removeAll();
+    darkLabels.removeAll();
     if (show) {
       const f = aladinRef.current?.getFov?.();
       const fovDeg = Array.isArray(f) ? f[0] : f;
@@ -378,11 +405,13 @@ function AladinView(
       const visible = NAMED_OBJECTS.filter(
         (o) => o.sizeArcmin / 60 >= minSizeDeg,
       );
+      // Dark nebulae render on their own dusty-orange layer; everything else on
+      // the green layer.
       for (const o of visible) {
-        circles.add(A.circle(o.ra, o.dec, o.sizeArcmin / 2 / 60));
-      }
-      labels.addSources(
-        visible.map((o) =>
+        const isDark = o.kind === "dark";
+        const circ = isDark ? darkCircles : circles;
+        circ.add(A.circle(o.ra, o.dec, o.sizeArcmin / 2 / 60));
+        (isDark ? darkLabels : labels).addSources([
           A.source(o.ra, o.dec, {
             label: objectLabel(o),
             popupTitle: objectLabel(o),
@@ -390,8 +419,8 @@ function AladinView(
               `${o.kind} · ${o.catalog} · size ${o.sizeArcmin}'<br/>` +
               `RA ${o.ra.toFixed(4)}°, Dec ${o.dec.toFixed(4)}°`,
           }),
-        ),
-      );
+        ]);
+      }
     }
     aladinRef.current?.view?.requestRedraw?.();
   }

@@ -7,16 +7,19 @@
 // hand-typed) and committed, so the app stays offline/deterministic at runtime:
 //   - Messier (complete, 110)        — OpenNGC
 //   - IC highlights (size-filtered)  — OpenNGC
+//   - NGC galaxies (size-filtered)   — OpenNGC (off-disk fill)
 //   - Sharpless Sh2 HII regions      — VizieR VII/20
 //   - Large supernova remnants       — VizieR VII/284 (Green 2019)
+//   - Named dark nebulae (Barnard)   — VizieR VII/220A (+ a couple of LDN showpieces)
 //   - A few famous NGC-only showpieces (North America, Helix, ...)
 // Re-run the generator to refresh; do not hand-edit the JSON.
 //
 // Coordinates are J2000 in DEGREES; `sizeArcmin` is the major angular axis.
 import generated from "./skyObjects.generated.json";
 
-/** Which source catalog an object came from. */
-export type Catalog = "M" | "C" | "IC" | "Sh2" | "SNR" | "NGC";
+/** Which source catalog an object came from. ("B" = Barnard dark nebula,
+ * "LDN" = Lynds Dark Nebula showpiece.) */
+export type Catalog = "M" | "C" | "IC" | "Sh2" | "SNR" | "NGC" | "B" | "LDN";
 
 export interface SkyObject {
   /** Primary catalog id, e.g. "M31", "Sh2-155", "Cygnus Loop". */
@@ -29,8 +32,8 @@ export interface SkyObject {
   dec: number;
   /** Major angular axis, arcminutes (drives the circle radius). */
   sizeArcmin: number;
-  /** Coarse object class, for the popup. */
-  kind: "galaxy" | "nebula" | "cluster" | "planetary" | "supernova";
+  /** Coarse object class, for the popup. ("dark" = dark/absorption nebula.) */
+  kind: "galaxy" | "nebula" | "cluster" | "planetary" | "supernova" | "dark";
   /** Source catalog. */
   catalog: Catalog;
 }

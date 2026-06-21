@@ -7,8 +7,10 @@ hand-typed) and writes frontend/src/sky/skyObjects.generated.json:
   - Messier (complete, 110)      via OpenNGC (mattiaverga/OpenNGC, J2000 + sizes + names)
   - Caldwell (Patrick Moore)      via OpenNGC (Caldwell numbers tagged in Identifiers)
   - IC highlights (size-filtered) via OpenNGC
+  - NGC galaxies (size-filtered)  via OpenNGC (off-disk fill, GAL_MIN arcmin)
   - Sharpless Sh2 HII regions     via VizieR VII/20  (size-filtered)
   - Large supernova remnants      via VizieR VII/284 (Green 2019, size-filtered)
+  - Named dark nebulae (Barnard)  via VizieR VII/220A (curated famous ones)
   - A few famous NGC-only showpieces (featured) so they aren't lost
 
 Run from anywhere (needs outbound HTTPS to GitHub raw + CDS VizieR):
@@ -46,12 +48,48 @@ SNR_URL = (
     "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=VII/284"
     "&-out=_RAJ2000,_DEJ2000,SNR,MajDiam,Names&-out.max=unlimited"
 )
+# Barnard's Catalogue of Dark Objects (VII/220A): id, ICRS coords, diameter (').
+# The Lynds LDN catalogue (VII/7A) has no common names and lists area, not a
+# major axis, so for a tasteful, recognisable selection we curate by Barnard
+# number instead (plus a couple of hand-placed LDN showpieces below).
+BARNARD_URL = (
+    "https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=VII/220A"
+    "&-out=Barn,_RAJ2000,_DEJ2000,Diam&-out.max=unlimited"
+)
 
 # Inclusion thresholds (major-axis arcmin) — keep the bundle to recognisable,
 # on-sky-meaningful objects; runtime zoom-culling declutters further.
 IC_MIN = 10.0
 SH2_MIN = 30.0
 SNR_MIN = 20.0
+# NGC galaxies (type G) bigger than this fill the high-galactic-latitude void
+# where the disk-hugging nebula catalogs leave the overlay empty. 6' keeps it to
+# genuinely large/bright showpieces; runtime zoom-culling declutters the rest.
+GAL_MIN = 6.0
+
+# Curated famous Barnard dark nebulae: number -> common name. Coordinates and
+# diameters come from the catalog fetch; only these numbers are included so the
+# overlay stays uncluttered. (Dark nebulae mostly hug the Milky Way disk — they
+# complement, rather than fill, the off-disk galaxy void.)
+BARNARD_NAMES = {
+    33: "Horsehead Nebula",
+    68: "Barnard 68",
+    72: "Snake Nebula",
+    142: "Barnard's E",   # B142/B143 pair; the E is the joint figure
+    143: "Barnard's E",
+    86: "Ink Spot",
+    150: "Seahorse Nebula",
+}
+# Minimum Barnard diameter to keep (arcmin); a few famous small ones (B68) are
+# whitelisted above regardless, but most dark nebulae read better when sizeable.
+BARNARD_MIN = 4.0
+
+# Hand-placed dark-nebula showpieces not in (or better than) the Barnard fetch —
+# e.g. the LDN "Dark Shark". (id, name, RA deg J2000, Dec deg, sizeArcmin.)
+FEATURED_DARK = [
+    ("LDN 1235", "Dark Shark Nebula", 333.0, 73.6, 60.0),
+    ("LDN 1251", "Baby Eagle Nebula", 339.5, 75.2, 60.0),
+]
 
 # Common names for the most famous Sharpless regions (nicer labels). Each entry
 # is verified against SIMBAD's cross-identifications — Sh2 numbers do NOT line up
@@ -84,6 +122,18 @@ FEATURED_NGC = [
     ("NGC 869", "Double Cluster", 35.0, 57.13, 60, "cluster"),
     ("NGC 7293", "Helix Nebula", 337.41, -20.84, 16, "planetary"),
     ("NGC 281", "Pacman Nebula", 13.2, 56.62, 35, "nebula"),
+    # Off-disk galaxy showpieces (high |galactic latitude|) so the sparse regions
+    # away from the Milky Way have recognisable targets even below GAL_MIN.
+    ("NGC 55", "", 3.79, -39.22, 32, "galaxy"),
+    ("NGC 300", "", 13.72, -37.68, 22, "galaxy"),
+    ("NGC 6822", "Barnard's Galaxy", 296.24, -14.80, 16, "galaxy"),
+    ("NGC 247", "", 11.79, -20.76, 21, "galaxy"),
+    ("NGC 3115", "Spindle Galaxy", 151.31, -7.72, 7, "galaxy"),
+    ("NGC 4631", "Whale Galaxy", 190.53, 32.54, 15, "galaxy"),
+    ("NGC 4656", "Hockey Stick Galaxy", 190.99, 32.17, 15, "galaxy"),
+    ("NGC 3628", "Hamburger Galaxy", 170.07, 13.59, 14, "galaxy"),
+    ("NGC 2403", "", 114.21, 65.60, 22, "galaxy"),
+    ("NGC 5907", "Splinter Galaxy", 228.97, 56.33, 13, "galaxy"),
 ]
 
 # Messier objects not cleanly in OpenNGC (star clouds / contested ids), to reach
@@ -97,7 +147,7 @@ MESSIER_EXTRA = {
 # Messier first, then Caldwell (the user-requested highlight list), then the
 # survey catalogs; featured NGC ranks just above SNR so a coincident Caldwell
 # entry is preferred but unique NGC showpieces (e.g. the Flame) still survive.
-PRIORITY = {"M": 0, "C": 1, "IC": 2, "Sh2": 3, "NGC": 4, "SNR": 5}
+PRIORITY = {"M": 0, "C": 1, "IC": 2, "Sh2": 3, "NGC": 4, "SNR": 5, "B": 6, "LDN": 7}
 
 # Corrections for known wrong common names in the source catalogs, keyed by the
 # object's final id. OpenNGC lists IC 434's common name as "Flame Nebula", but
@@ -237,6 +287,19 @@ def openngc_objects() -> list[dict]:
                 dict(id=f"IC {num}", name=common, ra=ra, dec=dec,
                      sizeArcmin=round(maj, 2), kind=kind, catalog="IC")
             )
+        elif (
+            name.startswith("NGC")
+            and kind == "galaxy"
+            and maj >= GAL_MIN
+            and typ not in BAD_TYPES
+        ):
+            # Large NGC galaxies (mostly high galactic latitude) to fill the
+            # off-disk void. dedup() folds any that coincide with M/C/IC/featured.
+            num = name[3:].lstrip("0") or name[3:]
+            out.append(
+                dict(id=f"NGC {num}", name=common, ra=ra, dec=dec,
+                     sizeArcmin=round(maj, 2), kind="galaxy", catalog="NGC")
+            )
 
     # Backfill any Messier number still missing (star clouds / contested ids).
     for n, (nm, ra, dec, sz, kind) in MESSIER_EXTRA.items():
@@ -299,6 +362,47 @@ def featured_ngc() -> list[dict]:
     ]
 
 
+def barnard() -> list[dict]:
+    """Curated famous Barnard dark nebulae (VII/220A). Only the numbers listed in
+    BARNARD_NAMES are kept, with accurate coords/diameters from the catalog."""
+    rows = parse_tsv(fetch(BARNARD_URL), 4)
+    out: list[dict] = []
+    for cells in rows:
+        barn = cells[0].strip()
+        try:
+            n = int(barn)
+        except ValueError:
+            continue
+        if n not in BARNARD_NAMES:
+            continue
+        try:
+            ra, dec = float(cells[1]), float(cells[2])
+        except ValueError:
+            continue
+        try:
+            diam = float(cells[3])
+        except (ValueError, IndexError):
+            diam = 0.0
+        if diam < BARNARD_MIN and n != 68:  # B68 is famous but tiny (~2')
+            diam = max(diam, BARNARD_MIN)
+        out.append(
+            dict(
+                id=f"B{n}", name=BARNARD_NAMES[n], ra=ra, dec=dec,
+                sizeArcmin=round(diam or BARNARD_MIN, 2),
+                kind="dark", catalog="B",
+            )
+        )
+    return out
+
+
+def featured_dark() -> list[dict]:
+    return [
+        dict(id=i, name=n, ra=ra, dec=dec, sizeArcmin=sz, kind="dark",
+             catalog="LDN")
+        for (i, n, ra, dec, sz) in FEATURED_DARK
+    ]
+
+
 def angular_sep(a: dict, b: dict) -> float:
     ra1, dec1, ra2, dec2 = (
         math.radians(a["ra"]), math.radians(a["dec"]),
@@ -348,6 +452,12 @@ def dedup(objs: list[dict]) -> list[dict]:
         if o["catalog"] != "M":
             dup = None
             for k in kept:
+                # Dark nebulae are silhouettes worth keeping even when they sit on
+                # top of an emission region (e.g. B33 Horsehead over IC 434), so
+                # only merge a dark object with another dark object and likewise
+                # never let a bright object swallow a dark one.
+                if (o["kind"] == "dark") != (k["kind"] == "dark"):
+                    continue
                 extent = min(max(o["sizeArcmin"], k["sizeArcmin"]), MERGE_SIZE_CAP_ARCMIN)
                 if angular_sep(o, k) < max(MIN_MERGE_DEG, 0.5 * extent / 60):
                     dup = k
@@ -363,9 +473,11 @@ def dedup(objs: list[dict]) -> list[dict]:
 def main() -> None:
     groups = {
         "featured NGC": featured_ngc(),
-        "OpenNGC (M/C/IC)": openngc_objects(),
+        "OpenNGC (M/C/IC/G)": openngc_objects(),
         "Sharpless": sharpless(),
         "SNR": snrs(),
+        "Barnard (dark)": barnard(),
+        "featured dark": featured_dark(),
     }
     for label, g in groups.items():
         print(f"  {label:14s}: {len(g)}")
