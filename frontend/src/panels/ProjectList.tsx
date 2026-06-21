@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ExposurePlan, Project, Target } from "../api";
 
 interface Props {
@@ -119,6 +119,51 @@ export default function ProjectList({
   const sortedProjects = [...projects].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
   );
+
+  // Single-open accordion (vcd): exactly one project is expanded at a time. The
+  // open project is the one that owns the current selection (sky-click or list-
+  // click both flow through `selectedTargetId`), unless the user has manually
+  // opened a different one.
+  const selectedProjectId =
+    selectedTargetId == null
+      ? null
+      : (projects
+          .find((p) => p.targets.some((t) => t.id === selectedTargetId))
+          ?.id ?? null);
+
+  // The manual override, stamped with the selection it was made under. A new
+  // selection wins: when `selectedProjectId` differs from the stamp the override
+  // is stale and ignored (so the owning project becomes the single open one).
+  // This is pure derivation — no setState-in-effect — so a background data
+  // refresh (kfc) that replaces `projects` without moving the selection can't
+  // collapse the open accordion.
+  // `active: false` (or a stale stamp) means "no override — follow the selection";
+  // `active: true` means the user picked `projectId` by hand (possibly `null` to
+  // explicitly collapse the selection's own project).
+  const [manualOpen, setManualOpen] = useState<{
+    active: boolean;
+    projectId: number | null;
+    forSelection: number | null;
+  }>({ active: false, projectId: null, forSelection: null });
+  const manualActive =
+    manualOpen.active && manualOpen.forSelection === selectedProjectId;
+
+  // The currently expanded project: the live manual override if any, else the
+  // project owning the selection.
+  const openProjectId = manualActive ? manualOpen.projectId : selectedProjectId;
+
+  // Set the manual override for the current selection context (single-open).
+  const setOpenProject = (projectId: number | null) =>
+    setManualOpen({ active: true, projectId, forSelection: selectedProjectId });
+
+  // Scroll the selected target into view once its accordion is expanded. Keyed on
+  // selection so it fires for both sky-click and list-click, but not on a refresh.
+  const selectedRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (selectedTargetId == null) return;
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedTargetId, openProjectId]);
+
   return (
     <details className="projects-panel" open>
       <summary>
@@ -136,10 +181,26 @@ export default function ProjectList({
       ) : (
         <div className="project-list">
           {sortedProjects.map((p) => (
-            // Start collapsed (5co): per-filter rows make each project tall, so an
-            // all-expanded list is too long to scan — expand only what you open.
-            <details key={p.id} className="project">
-              <summary>
+            // Controlled single-open accordion (vcd): open iff this project owns
+            // the selection (or the user manually opened it). Default collapsed
+            // (5co) — per-filter rows make each project tall, so only one expands.
+            // The summary's onClick (preventDefault) drives React state; the
+            // native <details> never toggles itself, so it can't drift from `open`.
+            <details
+              key={p.id}
+              className="project"
+              open={p.id === openProjectId}
+            >
+              <summary
+                onClick={(e) => {
+                  // Take over toggling so clicks are single-open: opening a closed
+                  // project collapses the rest; clicking the open one collapses it.
+                  // preventDefault stops the native <details> from also toggling
+                  // (which would fight the controlled `open` prop).
+                  e.preventDefault();
+                  setOpenProject(p.id === openProjectId ? null : p.id);
+                }}
+              >
                 <span className="project-name">{p.name}</span>
                 <span className={`badge state-${p.state}`}>{p.state}</span>
                 {p.is_mosaic && <span className="badge mosaic">mosaic</span>}
@@ -153,7 +214,10 @@ export default function ProjectList({
                     className="proj-edit"
                     title="Edit this Draft project"
                     onClick={(e) => {
-                      e.preventDefault(); // don't toggle the <details>
+                      e.preventDefault();
+                      // Don't toggle the <details>: stop the click from reaching
+                      // the summary's onClick (which drives the accordion).
+                      e.stopPropagation();
                       onEditProject(p);
                     }}
                   >
@@ -165,6 +229,7 @@ export default function ProjectList({
                 {p.targets.map((t) => (
                   <li
                     key={t.id}
+                    ref={t.id === selectedTargetId ? selectedRef : undefined}
                     className={
                       "target" + (t.id === selectedTargetId ? " selected" : "")
                     }
