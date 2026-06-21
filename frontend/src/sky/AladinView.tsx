@@ -333,6 +333,16 @@ function AladinView(
       // objectClicked above, so here we just dismiss any open marker popup.
       aladin.on("footprintClicked", () => closePopup());
 
+      // Make the WHOLE interior of a target's FOV frame a click target, not just
+      // its outline (Aladin only hit-tests the polygon stroke). The 'click' event
+      // gives the click's pixel + an isDragging flag, so on a real click (not a
+      // pan) we point-in-polygon the frames and select the one the click landed in.
+      aladin.on("click", (e: any) => {
+        if (!e || e.isDragging) return;
+        const id = frameTargetIdAt(e.x, e.y);
+        if (id != null) onClickRef.current?.(Number(id));
+      });
+
       // Re-cull the named-object overlay when the zoom changes, so only objects
       // large enough on-screen are drawn (debounced past the zoom animation). The
       // target-frame labels track the view via the continuous render loop below, so
@@ -465,6 +475,57 @@ function AladinView(
     const p = aladinRef.current?.world2pix?.(ra, dec);
     if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
     return { x: p[0], y: p[1] };
+  }
+
+  /** Ray-casting point-in-polygon test in screen (CSS px) space. */
+  function pointInScreenPolygon(
+    x: number,
+    y: number,
+    poly: { x: number; y: number }[],
+  ): boolean {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const { x: xi, y: yi } = poly[i];
+      const { x: xj, y: yj } = poly[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  /**
+   * Which target's FOV frame contains the screen point (host CSS px), or null.
+   * Projects each frame's corners and runs a point-in-polygon test so the WHOLE
+   * interior of a frame is a click target (Aladin's own hit-test only matches the
+   * polygon stroke). On overlap, the frame whose center is nearest the click wins.
+   */
+  function frameTargetIdAt(x: number, y: number): number | null {
+    const box = fovRef.current;
+    if (!box) return null;
+    let best: { id: number; d2: number } | null = null;
+    for (const t of targetsRef.current) {
+      const corners = fovCorners(
+        t.ra_deg,
+        t.dec_deg,
+        box.widthDeg,
+        box.heightDeg,
+        t.rotation,
+      );
+      if (corners.length < 4) continue;
+      const pts: { x: number; y: number }[] = [];
+      for (const [ra, dec] of corners) {
+        const p = worldToHostXY(ra, dec);
+        if (!p) break;
+        pts.push(p);
+      }
+      if (pts.length < corners.length || !pointInScreenPolygon(x, y, pts)) continue;
+      const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const d2 = (cx - x) ** 2 + (cy - y) ** 2;
+      if (!best || d2 < best.d2) best = { id: t.id, d2 };
+    }
+    return best?.id ?? null;
   }
 
   /**
