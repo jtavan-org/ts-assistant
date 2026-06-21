@@ -200,7 +200,7 @@ export default function App() {
         spanH,
         t.rotationDeg,
       );
-      return { panels, triangle };
+      return { panels, triangle, name: t.name };
     });
   }, [projectDraft, fovSize]);
 

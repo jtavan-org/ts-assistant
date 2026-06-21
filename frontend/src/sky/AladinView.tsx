@@ -9,12 +9,51 @@ import {
 } from "react";
 import A from "aladin-lite";
 import type { ExposurePlan, Survey, Target } from "../api";
-import { fovCorners, fovTopTriangle, type MosaicPanel } from "./fov";
+import {
+  fovCorners,
+  fovTopTriangle,
+  sphericalMidpoint,
+  type MosaicPanel,
+} from "./fov";
 import { NAMED_OBJECTS, objectLabel } from "./skyObjects";
 
 // A named object is drawn only when its angular size is at least this fraction
 // of the current field-of-view width — the zoom-aware declutter for the overlay.
 const MIN_FOV_FRACTION = 0.02;
+
+// A target-box name label is drawn only when the box is at least this fraction of
+// the current field-of-view wide. The same zoom-aware declutter the named-object
+// overlay uses, tuned so labels stay legible (boxes shrink to a few px at wide
+// FOV, where stacked names would be unreadable) but appear as you zoom in.
+const LABEL_MIN_FOV_FRACTION = 0.04;
+
+// The bottom edge of a fovCorners() polygon runs between corners 2 (-w,-h) and
+// 3 (+w,-h); its spherical midpoint is where the name label is anchored.
+function bottomEdgeMidpoint(
+  corners: [number, number][],
+): [number, number] | null {
+  if (corners.length < 4) return null;
+  const [r1, d1] = corners[2];
+  const [r2, d2] = corners[3];
+  return sphericalMidpoint(r1, d1, r2, d2);
+}
+
+/** Width of a box in degrees, from the spread of its corner RA/Decs (declutter). */
+function boxWidthDeg(corners: [number, number][]): number {
+  if (!corners.length) return 0;
+  const ras = corners.map((c) => c[0]);
+  const decs = corners.map((c) => c[1]);
+  const dRa = Math.max(...ras) - Math.min(...ras);
+  const dDec = Math.max(...decs) - Math.min(...decs);
+  return Math.max(dRa, dDec);
+}
+
+/** Current view FOV width in degrees, defaulting to 60 before the view reports. */
+function currentFovDeg(aladin: any): number {
+  const f = aladin?.getFov?.();
+  const fovDeg = Array.isArray(f) ? f[0] : f;
+  return fovDeg && fovDeg > 0 ? fovDeg : 60;
+}
 
 /** Per-filter acquisition breakdown for a target's popup (snd): one line per
  * exposure plan — filter and desired/acquired/accepted, with frames still to go. */
@@ -47,6 +86,8 @@ export interface FovBox {
 export interface TargetRender {
   panels: MosaicPanel[];
   triangle: [number, number][];
+  /** Target name, drawn (frame-matched amber) on the bottom edge of the box. */
+  name?: string;
 }
 
 /** Imperative handle so the controls can read the current view center/zoom. */
@@ -112,7 +153,10 @@ function AladinView(
   const aladinRef = useRef<any>(null);
   const catalogRef = useRef<any>(null);
   const fovOverlayRef = useRef<any>(null);
+  const fovLabelRef = useRef<any>(null);
   const draftOverlayRef = useRef<any>(null);
+  const draftLabelRef = useRef<any>(null);
+  const boxZoomTimerRef = useRef<number>(0);
   const coverageOverlayRef = useRef<any>(null);
   const namedCircleRef = useRef<any>(null);
   const namedLabelRef = useRef<any>(null);
@@ -193,6 +237,22 @@ function AladinView(
       aladin.addOverlay(fovOverlay);
       fovOverlayRef.current = fovOverlay;
 
+      // Name labels for the cyan per-target FOV boxes. A label-only catalog (the
+      // source markers are tiny/transparent-ish) carries the text in the box's
+      // frame color, mirroring the named-object label catalog below.
+      const fovLabels = A.catalog({
+        name: "Target labels",
+        sourceSize: 1,
+        color: "#00e5ff",
+        shape: "circle",
+        displayLabel: true,
+        labelColumn: "label",
+        labelColor: "#00e5ff",
+        labelFont: "12px sans-serif",
+      });
+      aladin.addCatalog(fovLabels);
+      fovLabelRef.current = fovLabels;
+
       // Project-draft overlay, amber so it reads distinctly from the cyan
       // per-target FOV boxes that can be shown at the same time.
       const draftOverlay = A.graphicOverlay({
@@ -201,6 +261,20 @@ function AladinView(
       });
       aladin.addOverlay(draftOverlay);
       draftOverlayRef.current = draftOverlay;
+
+      // Name labels for the amber project-draft boxes, in their frame color.
+      const draftLabels = A.catalog({
+        name: "Draft target labels",
+        sourceSize: 1,
+        color: "#ffb300",
+        shape: "circle",
+        displayLabel: true,
+        labelColumn: "label",
+        labelColor: "#ffb300",
+        labelFont: "12px sans-serif",
+      });
+      aladin.addCatalog(draftLabels);
+      draftLabelRef.current = draftLabels;
 
       // Coverage Area-of-Interest preview (the raw dragged rectangle), drawn
       // white/dashed during a coverage drag so it reads apart from the amber grid.
@@ -276,6 +350,13 @@ function AladinView(
       // Re-cull the named-object overlay when the zoom changes, so only objects
       // large enough on-screen are drawn (debounced past the zoom animation).
       aladin.on("zoomChanged", () => {
+        // Re-cull the target-box name labels too: which boxes are big enough to
+        // label depends on the current FOV, so the set changes as you zoom.
+        window.clearTimeout(boxZoomTimerRef.current);
+        boxZoomTimerRef.current = window.setTimeout(() => {
+          syncFovLabels(targetsRef.current, fovRef.current);
+          syncDraftLabels(draftRef.current);
+        }, 120);
         if (!showNamedRef.current) return;
         window.clearTimeout(namedZoomTimerRef.current);
         namedZoomTimerRef.current = window.setTimeout(
@@ -364,8 +445,38 @@ function AladinView(
         );
       }
     }
+    syncFovLabels(items, box);
     // removeAll()/add() don't repaint until the view changes; force it so the
     // boxes appear/disappear immediately when toggled.
+    aladinRef.current?.view?.requestRedraw?.();
+  }
+
+  // Name labels for the per-target FOV boxes (cyan). One label per target, anchored
+  // on the box's bottom-edge midpoint and culled at wide FOV (see LABEL_MIN_FOV_FRACTION).
+  function syncFovLabels(items: Target[], box: FovBox | null) {
+    const labels = fovLabelRef.current;
+    if (!labels) return;
+    labels.removeAll();
+    if (!box) {
+      aladinRef.current?.view?.requestRedraw?.();
+      return;
+    }
+    const minWidthDeg = currentFovDeg(aladinRef.current) * LABEL_MIN_FOV_FRACTION;
+    const sources: any[] = [];
+    for (const t of items) {
+      const corners = fovCorners(
+        t.ra_deg,
+        t.dec_deg,
+        box.widthDeg,
+        box.heightDeg,
+        t.rotation,
+      );
+      if (boxWidthDeg(corners) < minWidthDeg) continue;
+      const anchor = bottomEdgeMidpoint(corners);
+      if (!anchor || !t.name) continue;
+      sources.push(A.source(anchor[0], anchor[1], { label: t.name }));
+    }
+    if (sources.length) labels.addSources(sources);
     aladinRef.current?.view?.requestRedraw?.();
   }
 
@@ -379,6 +490,39 @@ function AladinView(
         if (t.panels.length) ov.add(A.polygon(t.triangle)); // orientation marker
       }
     }
+    syncDraftLabels(targets);
+    aladinRef.current?.view?.requestRedraw?.();
+  }
+
+  // Name labels for the amber project-draft boxes. A draft "box" can be a mosaic of
+  // panels, so we anchor the label on the bottom edge of the whole-target footprint
+  // (the union of panel corners) and gate it on that footprint's on-screen width.
+  function syncDraftLabels(targets: TargetRender[] | null) {
+    const labels = draftLabelRef.current;
+    if (!labels) return;
+    labels.removeAll();
+    if (!targets) {
+      aladinRef.current?.view?.requestRedraw?.();
+      return;
+    }
+    const minWidthDeg = currentFovDeg(aladinRef.current) * LABEL_MIN_FOV_FRACTION;
+    const sources: any[] = [];
+    for (const t of targets) {
+      if (!t.name || !t.panels.length) continue;
+      const allCorners = t.panels.flatMap((p) => p.corners);
+      if (boxWidthDeg(allCorners) < minWidthDeg) continue;
+      // Anchor on the bottom edge of the whole-target footprint: every panel's
+      // corners 2 (-w,-h) and 3 (+w,-h) lie on a bottom edge, so the two
+      // lowest-Dec such corners bracket the overall bottom edge — label at their
+      // spherical midpoint, matching the per-target FOV box anchor.
+      const bottoms = t.panels
+        .flatMap((p) => [p.corners[2], p.corners[3]])
+        .sort((a, b) => a[1] - b[1]);
+      const [c1, c2] = [bottoms[0], bottoms[1] ?? bottoms[0]];
+      const anchor = sphericalMidpoint(c1[0], c1[1], c2[0], c2[1]);
+      sources.push(A.source(anchor[0], anchor[1], { label: t.name }));
+    }
+    if (sources.length) labels.addSources(sources);
     aladinRef.current?.view?.requestRedraw?.();
   }
 
