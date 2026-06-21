@@ -27,6 +27,17 @@ const MIN_FOV_FRACTION = 0.02;
 // FOV, where stacked names would be unreadable) but appear as you zoom in.
 const LABEL_MIN_FOV_FRACTION = 0.04;
 
+// Marker size for the label-only catalogs (the box already marks the position, so
+// the marker itself is drawn transparent — see the catalog `color` below).
+// IMPORTANT: Aladin caches a circle marker as `ctx.arc(C/2, C/2, C/2 - 1, ...)`
+// where C is sourceSize, so any sourceSize < 2 yields a NEGATIVE radius and throws
+// `DOMException: Negative radius` inside the draw loop — which silently kills all
+// repainting (pan + survey switching freeze while DOM popups still work). Keep this
+// >= 2; 5 matches the named-object label catalogs. (Regression fix.)
+const LABEL_MARKER_SIZE = 5;
+// Transparent marker so only the text shows; label color is set per-catalog.
+const INVISIBLE_MARKER = "rgba(0, 0, 0, 0)";
+
 // The bottom edge of a fovCorners() polygon runs between corners 2 (-w,-h) and
 // 3 (+w,-h); its spherical midpoint is where the name label is anchored.
 function bottomEdgeMidpoint(
@@ -238,12 +249,12 @@ function AladinView(
       fovOverlayRef.current = fovOverlay;
 
       // Name labels for the cyan per-target FOV boxes. A label-only catalog (the
-      // source markers are tiny/transparent-ish) carries the text in the box's
-      // frame color, mirroring the named-object label catalog below.
+      // source marker is transparent) carries the text in the box's frame color,
+      // mirroring the named-object label catalog below.
       const fovLabels = A.catalog({
         name: "Target labels",
-        sourceSize: 1,
-        color: "#00e5ff",
+        sourceSize: LABEL_MARKER_SIZE,
+        color: INVISIBLE_MARKER,
         shape: "circle",
         displayLabel: true,
         labelColumn: "label",
@@ -265,8 +276,8 @@ function AladinView(
       // Name labels for the amber project-draft boxes, in their frame color.
       const draftLabels = A.catalog({
         name: "Draft target labels",
-        sourceSize: 1,
-        color: "#ffb300",
+        sourceSize: LABEL_MARKER_SIZE,
+        color: INVISIBLE_MARKER,
         shape: "circle",
         displayLabel: true,
         labelColumn: "label",
