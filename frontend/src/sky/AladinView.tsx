@@ -153,12 +153,6 @@ function AladinView(
   // rAF handle for the continuous per-frame label loop (paintLabels), so the labels
   // track the boxes in lockstep with the view; cancelled on unmount.
   const labelRafRef = useRef<number>(0);
-  // Bumped whenever label-affecting data (FOV box, targets, draft) changes, so the
-  // continuous label loop repaints even while the view is otherwise static.
-  const labelEpochRef = useRef<number>(0);
-  // Signature of the last painted frame; lets the loop skip redundant repaints
-  // when nothing the labels depend on has moved (idle CPU saver).
-  const labelSigRef = useRef<string>("");
   const coverageOverlayRef = useRef<any>(null);
   const namedCircleRef = useRef<any>(null);
   const namedLabelRef = useRef<any>(null);
@@ -443,9 +437,9 @@ function AladinView(
       }
     }
     // removeAll()/add() don't repaint until the view changes; force it so the
-    // boxes appear/disappear immediately when toggled.
+    // boxes appear/disappear immediately when toggled. The label loop repaints the
+    // names every frame, so it picks up the change on its own.
     aladinRef.current?.view?.requestRedraw?.();
-    labelEpochRef.current++; // mark labels dirty for the render loop
   }
 
   function syncDraft(targets: TargetRender[] | null) {
@@ -459,7 +453,6 @@ function AladinView(
       }
     }
     aladinRef.current?.view?.requestRedraw?.();
-    labelEpochRef.current++; // mark labels dirty for the render loop
   }
 
   // ----- Rotated target-frame name labels (sibling canvas) -------------------
@@ -543,6 +536,15 @@ function AladinView(
     const pxH = Math.max(1, Math.round(cssH * dpr));
     if (canvas.width !== pxW) canvas.width = pxW;
     if (canvas.height !== pxH) canvas.height = pxH;
+    // A <canvas> is a REPLACED element, so the stylesheet's `inset: 0` does NOT
+    // stretch it to the host — without an explicit display size it renders at its
+    // intrinsic (backing-store) size, which on a HiDPI screen is dpr× too big and
+    // pushes every label off its frame (rotation still looks right, position doesn't).
+    // Pin the CSS display size to the host so 1 logical unit == 1 CSS px.
+    const cssWpx = `${cssW}px`;
+    const cssHpx = `${cssH}px`;
+    if (canvas.style.width !== cssWpx) canvas.style.width = cssWpx;
+    if (canvas.style.height !== cssHpx) canvas.style.height = cssHpx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
@@ -583,27 +585,17 @@ function AladinView(
   }
 
   /**
-   * Paint the rotated frame labels if anything they depend on has moved since the
-   * last frame. Driven every animation frame by the loop effect below, in lockstep
-   * with the browser's paint (the cadence Aladin repaints at). Aladin's
-   * `positionChanged`/`zoomChanged` events fire too sparsely during an inertial pan,
-   * so an event-driven repaint left the labels lagging frames behind their boxes —
-   * they appeared to float away and judder, then snapped back when motion stopped.
-   * A cheap view+data signature skips the repaint when nothing has changed, so an
-   * idle view costs ~nothing. Safely no-ops until the Aladin view exists.
+   * Repaint the rotated frame labels. Driven every animation frame by the init
+   * effect's loop, in lockstep with the browser's paint (Aladin's repaint cadence),
+   * so the labels track the boxes without lag. We repaint UNCONDITIONALLY rather
+   * than gating on a view signature: Aladin's getRaDec()/positionChanged don't
+   * update reliably every frame during an inertial pan, so a signature-based skip
+   * left the labels frozen mid-pan while the boxes kept moving. drawLabels only
+   * reallocates the canvas when its size changes, so a per-frame repaint of a few
+   * text labels is cheap. No-ops until the view exists; never throws into the loop.
    */
   function paintLabels() {
-    const aladin = aladinRef.current;
-    const host = divRef.current;
-    if (!aladin || !host) return;
-    const c = aladin.getRaDec?.();
-    const ra = Array.isArray(c) ? c[0] : 0;
-    const dec = Array.isArray(c) ? c[1] : 0;
-    const sig =
-      `${ra},${dec},${currentFovDeg(aladin)},` +
-      `${host.clientWidth}x${host.clientHeight},${labelEpochRef.current}`;
-    if (sig === labelSigRef.current) return;
-    labelSigRef.current = sig;
+    if (!aladinRef.current || !divRef.current) return;
     try {
       drawLabels();
     } catch {
