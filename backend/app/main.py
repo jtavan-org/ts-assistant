@@ -27,6 +27,10 @@ from .config import BACKUP_DIR, find_source_db
 logger = logging.getLogger("ts_assistant")
 
 
+# Keep health responsive even if the DB is momentarily locked.
+_HEALTH_TIMEOUT = 2.0
+
+
 def _db_error(source) -> str | None:
     """Open the DB the way reads/backups will, to surface perms/lock issues early."""
     if source is None:
@@ -39,6 +43,39 @@ def _db_error(source) -> str | None:
             conn.close()
     except Exception as e:  # noqa: BLE001 — report any open failure, don't crash startup
         return f"cannot open the Target Scheduler database for read/write: {e}"
+    return None
+
+
+def _db_write_error(source) -> str | None:
+    """Probe that the database is actually *writable*, reverting immediately.
+
+    A read — or even ``BEGIN IMMEDIATE`` — can succeed on a database whose real page
+    writes still fail (notably SQLite over a network share / file-sync replica such as
+    SMB/CIFS/NFS, where the journal/page write is where it breaks). So we exercise the
+    actual write path inside a transaction and roll it back: nothing is persisted.
+    """
+    if source is None:
+        return None
+    try:
+        conn = sqlite3.connect(str(source), timeout=_HEALTH_TIMEOUT)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("CREATE TABLE IF NOT EXISTS _ts_write_probe (x)")
+            conn.execute("ROLLBACK")  # revert — the probe table never persists
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 — report, don't crash
+        msg = str(e).lower()
+        if "readonly" in msg or "read-only" in msg or "read only" in msg:
+            return (
+                "database is read-only — it is most likely on a network share or "
+                "file-sync replica (SMB/CIFS/NFS, Syncthing/Dropbox, etc.) that does not "
+                "reliably accept SQLite writes, or the file is write-protected. Point TS "
+                f"Assistant at a database on writable local storage. ({e})"
+            )
+        if "lock" in msg or "busy" in msg:
+            return f"database is busy (open by NINA?) — could not verify writability: {e}"
+        return f"database is not writable: {e}"
     return None
 
 
@@ -81,10 +118,15 @@ app.include_router(profiles.router, prefix="/api")
 @app.get("/api/health")
 def health() -> dict:
     source = find_source_db()
+    open_error = _db_error(source)
+    # Only bother probing writability if the DB at least opens.
+    write_error = _db_write_error(source) if (source and not open_error) else None
     return {
         "status": "ok",
         "db_present": source is not None,
         "db_path": str(source) if source else None,
         "backup_dir": str(BACKUP_DIR),
-        "error": _db_error(source),
+        "db_writable": source is not None and open_error is None and write_error is None,
+        "write_error": write_error,
+        "error": open_error,
     }

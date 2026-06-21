@@ -3,8 +3,9 @@
 GET (qiz.1) serves the user's existing Target Scheduler exposure templates so the
 Project builder can reference a real template by Id. POST (qiz.5) creates a new
 template additively (one row, backed-up + provenanced + undoable) via the export
-orchestrator; it writes to the staging copy like project saves. Editing/deleting
-existing templates is out of scope (that's a modify op).
+orchestrator; it writes in place on the configured database, taking a backup first,
+like project saves. Editing/deleting existing templates is out of scope (that's a
+modify op).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..db.export import (
     DatabaseBusyError,
+    DatabaseReadOnlyError,
     ExportError,
     ProgressError,
     create_exposure_template,
@@ -37,7 +39,7 @@ def create_exposure_template_endpoint(spec: ExposureTemplateSpec) -> ExposureTem
         res = create_exposure_template(spec)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except (DatabaseBusyError, ProgressError) as e:
+    except (DatabaseBusyError, DatabaseReadOnlyError, ProgressError) as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ExportError as e:
         raise HTTPException(status_code=400, detail=str(e))

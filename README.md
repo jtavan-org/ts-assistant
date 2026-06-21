@@ -65,6 +65,13 @@ export TS_ASSISTANT_DB=/path/to/schedulerdb.sqlite
 The app still starts without a database — the interface just shows "no database
 loaded" until you provide one.
 
+> **Keep the database on local storage.** TS Assistant writes to the database, and
+> SQLite writes are not reliable on network shares or file-sync folders (SMB/CIFS/NFS,
+> Syncthing, Dropbox, …) — saves can fail with *"the database is read-only"*, and
+> two-way sync of a live database can cause conflicts or corruption. If NINA runs on
+> another machine, copy `schedulerdb.sqlite` to local storage for editing (and copy it
+> back when you're done) instead of pointing the app at a synced/shared folder.
+
 ### 2. Start the backend
 
 ```bash

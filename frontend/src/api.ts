@@ -186,6 +186,10 @@ export interface Health {
   db_present: boolean;
   db_path: string | null;
   backup_dir: string | null;
+  /** False when the DB opens for reads but writes fail (read-only / network share). */
+  db_writable: boolean;
+  /** Why writes would fail, when db_writable is false. */
+  write_error: string | null;
   error: string | null;
 }
 

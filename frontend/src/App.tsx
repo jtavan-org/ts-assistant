@@ -731,6 +731,11 @@ export default function App() {
         <div className="db-banner db-error">
           ⚠ Can’t open the Target Scheduler database — {health.error}
         </div>
+      ) : health?.db_present && health.db_writable === false ? (
+        <div className="db-banner db-error">
+          ⚠ The database is read-only — changes can’t be saved.{" "}
+          {health.write_error ?? ""}
+        </div>
       ) : (
         health?.db_present && (
           <div className="db-banner" title={health.db_path ?? undefined}>

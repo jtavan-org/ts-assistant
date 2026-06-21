@@ -28,6 +28,9 @@ services:
       # AND writes this database, taking a backup before every write. Mounted read-write
       # so it can write the DB plus its SQLite -wal/-shm sidecars; mounting the
       # *directory* (not the file) is required for those sidecars.
+      # NOTE: TS_DB_DIR must be writable LOCAL storage. SQLite writes are unreliable on
+      # network shares / file-sync replicas (SMB/CIFS/NFS, Syncthing, Dropbox) — see
+      # .env.example. Copy the DB local rather than pointing this at a synced folder.
       - "${TS_DB_DIR:-./sample_database}:/app/sample_database"
       # Timestamped pre-write backups, kept as a host bind so they're easy to grab if you
       # ever need to restore (./data/backups).

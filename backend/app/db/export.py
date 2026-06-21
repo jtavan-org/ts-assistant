@@ -63,6 +63,13 @@ class DatabaseBusyError(ExportError):
     """The target DB is locked (e.g. NINA/Target Scheduler has it open)."""
 
 
+class DatabaseReadOnlyError(ExportError):
+    """The target DB can't be written: opened read-only, write-protected, or on a
+    filesystem that doesn't support the write (commonly a network share / sync replica
+    such as SMB/CIFS/NFS). Distinct from *busy* — retrying alone won't help; the
+    database needs to be on writable local storage."""
+
+
 class ProgressError(ExportError):
     """Refused because the affected project has captured subframes."""
 
@@ -181,6 +188,14 @@ def _busy_or_export_error(e: sqlite3.OperationalError) -> ExportError:
     if "lock" in msg or "busy" in msg:
         return DatabaseBusyError(
             "Target Scheduler database is busy — pause NINA's scheduler or close it, then retry."
+        )
+    if "readonly" in msg or "read-only" in msg or "read only" in msg:
+        return DatabaseReadOnlyError(
+            "Can't write the Target Scheduler database — it is read-only. This usually means "
+            "the database is on a network share or a file-sync replica (SMB/CIFS/NFS, "
+            "Syncthing/Dropbox, etc.) that doesn't reliably accept SQLite writes, or the file "
+            "is write-protected. Point TS Assistant at a database on writable local storage. "
+            f"(SQLite: {e})"
         )
     return ExportError(str(e))
 
