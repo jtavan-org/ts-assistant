@@ -15,9 +15,12 @@ import pytest
 
 from app.db import backup, ops
 from app.db import export as export_mod
+import os
+
 from app.db.export import (
     ConcurrentModificationError,
     DatabaseBusyError,
+    DatabaseReadOnlyError,
     _publish,
     _stage_in,
     export_project,
@@ -155,6 +158,21 @@ def test_concurrent_external_write_aborts_publish(tmp_path):
 def test_concurrent_modification_is_a_busy_error():
     # Routers map DatabaseBusyError -> 409, so the conflict is retriable for the user.
     assert issubclass(ConcurrentModificationError, DatabaseBusyError)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permission checks")
+def test_publish_to_unwritable_dir_raises_readonly(tmp_path):
+    """If the database's folder isn't writable, publish fails with a clear read-only
+    error (mapped to 409) rather than a raw OSError."""
+    dbdir = tmp_path / "dbdir"
+    dbdir.mkdir()
+    db = _baseline(dbdir / "t.sqlite")
+    os.chmod(dbdir, 0o555)  # readable (so staging can read) but not writable
+    try:
+        with pytest.raises(DatabaseReadOnlyError):
+            export_project(_new_project(), target_db=db, now=T0)
+    finally:
+        os.chmod(dbdir, 0o755)
 
 
 def test_staged_write_succeeds_and_persists(tmp_path):

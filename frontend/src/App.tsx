@@ -733,7 +733,7 @@ export default function App() {
         </div>
       ) : health?.db_present && health.db_writable === false ? (
         <div className="db-banner db-error">
-          ⚠ The database is read-only — changes can’t be saved.{" "}
+          ⚠ Changes can’t be saved — the database folder isn’t writable.{" "}
           {health.write_error ?? ""}
         </div>
       ) : (

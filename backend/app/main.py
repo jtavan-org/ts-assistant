@@ -7,8 +7,11 @@ targets, and the HiPS survey catalog to the React/Aladin Lite frontend.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
+import tempfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,10 +30,6 @@ from .config import BACKUP_DIR, find_source_db
 logger = logging.getLogger("ts_assistant")
 
 
-# Keep health responsive even if the DB is momentarily locked.
-_HEALTH_TIMEOUT = 2.0
-
-
 def _db_error(source) -> str | None:
     """Open the DB the way reads/backups will, to surface perms/lock issues early."""
     if source is None:
@@ -47,35 +46,39 @@ def _db_error(source) -> str | None:
 
 
 def _db_write_error(source) -> str | None:
-    """Probe that the database is actually *writable*, reverting immediately.
+    """Probe whether we could *save* — i.e. publish a file into the database's folder.
 
-    A read — or even ``BEGIN IMMEDIATE`` — can succeed on a database whose real page
-    writes still fail (notably SQLite over a network share / file-sync replica such as
-    SMB/CIFS/NFS, where the journal/page write is where it breaks). So we exercise the
-    actual write path inside a transaction and roll it back: nothing is persisted.
+    Writes run on a local copy and are published back by writing a temp file in the
+    database's directory and renaming it over the file (see :mod:`app.db.export`). So the
+    meaningful check is whether that directory accepts a create + rename — NOT whether the
+    source accepts in-place SQLite writes. The latter fails on a network share (CIFS/SMB)
+    even though saves succeed via staging, so probing it would warn falsely. Non-
+    destructive: never touches the database file itself.
     """
     if source is None:
         return None
+    d = Path(source).parent
+    tmp = None
     try:
-        conn = sqlite3.connect(str(source), timeout=_HEALTH_TIMEOUT)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            conn.execute("CREATE TABLE IF NOT EXISTS _ts_write_probe (x)")
-            conn.execute("ROLLBACK")  # revert — the probe table never persists
-        finally:
-            conn.close()
-    except Exception as e:  # noqa: BLE001 — report, don't crash
-        msg = str(e).lower()
-        if "readonly" in msg or "read-only" in msg or "read only" in msg:
-            return (
-                "database is read-only — it is most likely on a network share or "
-                "file-sync replica (SMB/CIFS/NFS, Syncthing/Dropbox, etc.) that does not "
-                "reliably accept SQLite writes, or the file is write-protected. Point TS "
-                f"Assistant at a database on writable local storage. ({e})"
-            )
-        if "lock" in msg or "busy" in msg:
-            return f"database is busy (open by NINA?) — could not verify writability: {e}"
-        return f"database is not writable: {e}"
+        fd, tmp = tempfile.mkstemp(prefix=".ts-write-probe-", dir=d)
+        with os.fdopen(fd, "wb") as f:
+            f.write(b"ok")
+            f.flush()
+            os.fsync(f.fileno())
+        renamed = tmp + ".renamed"
+        os.replace(tmp, renamed)  # exercise the publish rename, too
+        tmp = renamed
+    except OSError as e:
+        return (
+            "can't save changes — the folder containing the database isn't writable by "
+            f"TS Assistant. Check the permissions on the mounted database directory. ({e})"
+        )
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     return None
 
 

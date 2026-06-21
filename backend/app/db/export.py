@@ -74,10 +74,11 @@ class DatabaseBusyError(ExportError):
 
 
 class DatabaseReadOnlyError(ExportError):
-    """The target DB can't be written: opened read-only, write-protected, or on a
-    filesystem that doesn't support the write (commonly a network share / sync replica
-    such as SMB/CIFS/NFS). Distinct from *busy* — retrying alone won't help; the
-    database needs to be on writable local storage."""
+    """We couldn't save: the database's folder isn't writable, so publishing the edited
+    copy back to it failed. (Writes themselves run on a local copy — see _staged_write —
+    so a network share that merely rejects in-place SQLite writes is fine; this is about
+    the destination folder genuinely not accepting a file write.) Distinct from *busy* —
+    retrying alone won't help until the folder's permissions are fixed."""
 
 
 class ProgressError(ExportError):
@@ -208,12 +209,11 @@ def _busy_or_export_error(e: sqlite3.OperationalError) -> ExportError:
             "Target Scheduler database is busy — pause NINA's scheduler or close it, then retry."
         )
     if "readonly" in msg or "read-only" in msg or "read only" in msg:
+        # Writes run on a local working copy, so this is unusual (the local scratch dir
+        # is read-only?). Report it plainly rather than blaming the source location.
         return DatabaseReadOnlyError(
-            "Can't write the Target Scheduler database — it is read-only. This usually means "
-            "the database is on a network share or a file-sync replica (SMB/CIFS/NFS, "
-            "Syncthing/Dropbox, etc.) that doesn't reliably accept SQLite writes, or the file "
-            "is write-protected. Point TS Assistant at a database on writable local storage. "
-            f"(SQLite: {e})"
+            "Can't write the working copy of the database — the local working directory "
+            f"appears to be read-only. ({e})"
         )
     return ExportError(str(e))
 
@@ -292,15 +292,24 @@ def _publish(source: Path, work: Path, expected_sig: str) -> str:
         )
     # Whole-file publish: copy to a temp file in the source directory, then atomically
     # rename over the original (a sequential write + rename, which works over CIFS).
-    fd, tmp = tempfile.mkstemp(prefix=source.name + ".", suffix=".tswrite", dir=source.parent)
-    os.close(fd)
-    tmp_path = Path(tmp)
+    # Creating the temp file or renaming can fail if the folder isn't writable -> map the
+    # whole thing to a clean read-only error.
     try:
-        shutil.copyfile(work, tmp_path)
-        os.replace(tmp_path, source)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
+        fd, tmp = tempfile.mkstemp(prefix=source.name + ".", suffix=".tswrite", dir=source.parent)
+        os.close(fd)
+        tmp_path = Path(tmp)
+        try:
+            shutil.copyfile(work, tmp_path)
+            os.replace(tmp_path, source)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
+    except OSError as e:
+        raise DatabaseReadOnlyError(
+            f"couldn't save changes back to {source} — the folder containing the database "
+            "isn't writable by TS Assistant. Check the permissions on the mounted database "
+            "directory."
+        ) from e
     return backup_signature(source)
 
 
