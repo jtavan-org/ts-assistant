@@ -7,6 +7,8 @@ interface Props {
   onSelectTarget: (t: Target) => void;
   /** Load a Draft, no-progress project into the builder for editing (o2c). */
   onEditProject: (p: Project) => void;
+  /** Toggle one exposure plan's enabled flag, persisted via the backend (ipq). */
+  onTogglePlanEnabled: (planId: number, enabled: boolean) => void;
   /** The project builder (New-project button / draft form), shown at the top. */
   builder: ReactNode;
 }
@@ -50,11 +52,48 @@ function Completion({ plans, className }: { plans: ExposurePlan[]; className: st
   );
 }
 
+/** Per-filter exposure-plan rows under a target, each with an enabled/disabled
+ * toggle (ts_assistant-ipq). Toggling persists via the backend; clicks don't bubble
+ * to the row's target-select handler. */
+function PlanRows({
+  plans,
+  onTogglePlanEnabled,
+}: {
+  plans: ExposurePlan[];
+  onTogglePlanEnabled: (planId: number, enabled: boolean) => void;
+}) {
+  if (!plans.length) return null;
+  return (
+    <ul className="plan-rows" onClick={(e) => e.stopPropagation()}>
+      {plans.map((pl) => (
+        <li
+          key={pl.id}
+          className={"plan-row-item" + (pl.enabled ? "" : " disabled")}
+        >
+          <label className="plan-enable" title="Enable/disable this filter for the scheduler">
+            <input
+              type="checkbox"
+              checked={pl.enabled}
+              onChange={(e) => onTogglePlanEnabled(pl.id, e.target.checked)}
+            />
+            <span className="plan-filter">{pl.filter_name ?? "—"}</span>
+          </label>
+          {pl.exposure != null && (
+            <span className="plan-exp">{pl.exposure}s</span>
+          )}
+          <Completion plans={[pl]} className="plan-prog" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function ProjectList({
   projects,
   selectedTargetId,
   onSelectTarget,
   onEditProject,
+  onTogglePlanEnabled,
   builder,
 }: Props) {
   // Sort a copy alphabetically by name (case-insensitive). `.sort` is stable
@@ -117,6 +156,10 @@ export default function ProjectList({
                     <span className="coords">
                       {t.ra_deg.toFixed(2)}°, {t.dec_deg.toFixed(2)}°
                     </span>
+                    <PlanRows
+                      plans={t.exposure_plans}
+                      onTogglePlanEnabled={onTogglePlanEnabled}
+                    />
                   </li>
                 ))}
               </ul>

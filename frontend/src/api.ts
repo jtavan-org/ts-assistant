@@ -28,6 +28,8 @@ export interface ExposurePlan {
   acquired: number;
   accepted: number;
   exposure_template_id: number | null;
+  /** Target Scheduler's per-plan enable flag; a disabled plan is skipped. */
+  enabled: boolean;
 }
 
 /** One step of an override exposure order (awh). action 0 = expose the plan at
@@ -343,6 +345,39 @@ export async function deleteProject(projectId: number): Promise<DeleteResult> {
     throw new Error(msg);
   }
   return res.json() as Promise<DeleteResult>;
+}
+
+// --- exposure-plan enabled toggle (ts_assistant-ipq) -----------------------
+// Self-contained: persists a single plan's enabled flag through the backend's
+// staged-write path. PATCH that surfaces the backend's error detail (404 plan
+// gone / 409 busy / read-only) so the UI can revert + show why.
+export interface PlanEnabledResult {
+  plan_id: number;
+  enabled: boolean;
+  target_db: string;
+  backup_path: string;
+}
+
+export async function setExposurePlanEnabled(
+  planId: number,
+  enabled: boolean,
+): Promise<PlanEnabledResult> {
+  const res = await fetch(`${API_BASE}/exposure-plans/${planId}/enabled`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j && typeof j.detail === "string") msg = j.detail;
+    } catch {
+      /* non-JSON body */
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<PlanEnabledResult>;
 }
 
 // Append ?profile_id= only when a profile is active, so the param stays optional.

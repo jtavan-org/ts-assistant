@@ -14,6 +14,7 @@ import {
   fetchProjects,
   fetchRuleWeightDefaults,
   fetchSurveys,
+  setExposurePlanEnabled,
   setProfileAlias,
   updatePlanTemplate,
   type ExportTargetInput,
@@ -375,6 +376,29 @@ export default function App() {
     }
   }
 
+  // Toggle one exposure plan's enabled flag in the live project list (ts_assistant-ipq).
+  // Optimistic: flip the flag in state immediately, persist via the staged-write path,
+  // and revert (surfacing the error) if the backend rejects it.
+  function togglePlanEnabled(planId: number, enabled: boolean) {
+    const apply = (val: boolean) =>
+      setProjects((prev) =>
+        prev.map((p) => ({
+          ...p,
+          targets: p.targets.map((t) => ({
+            ...t,
+            exposure_plans: t.exposure_plans.map((pl) =>
+              pl.id === planId ? { ...pl, enabled: val } : pl,
+            ),
+          })),
+        })),
+      );
+    apply(enabled);
+    setExposurePlanEnabled(planId, enabled).catch((e) => {
+      apply(!enabled); // revert
+      setSaveResult({ ok: false, message: e instanceof Error ? e.message : String(e) });
+    });
+  }
+
   function addTarget() {
     setProjectDraft((d) => {
       if (!d) return d;
@@ -640,6 +664,7 @@ export default function App() {
             acquired: 0,
             accepted: 0,
             exposure_template_id: p.exposure_template_id ?? null,
+            enabled: true,
           })),
           override_exposure_order: draft.overrideOrder.map((s) => ({ ...s })),
         })),
@@ -854,6 +879,7 @@ export default function App() {
             selectedTargetId={selectedTargetId}
             onSelectTarget={selectTarget}
             onEditProject={editProject}
+            onTogglePlanEnabled={togglePlanEnabled}
             builder={
               <ProjectBuilder
                 fov={fovSize}

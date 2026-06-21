@@ -151,6 +151,8 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
                 acquired=int(_row_get(r, "acquired", default=0) or 0),
                 accepted=int(_row_get(r, "accepted", default=0) or 0),
                 exposure_template_id=int(tmpl_id) if tmpl_id is not None else None,
+                # exposureplan.enabled (default 1); NULL/missing → enabled.
+                enabled=bool(_row_get(r, "enabled", default=1)),
             )
             plans_by_target.setdefault(int(target_id), []).append(plan)
 

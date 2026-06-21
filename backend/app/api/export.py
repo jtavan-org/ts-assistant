@@ -16,6 +16,7 @@ Errors map to status codes the frontend can act on:
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from ..db.export import (
     DatabaseBusyError,
@@ -24,10 +25,13 @@ from ..db.export import (
     EditNotAllowedError,
     ExportError,
     ExportResult,
+    PlanEnabledResult,
+    PlanNotFoundError,
     ProgressError,
     UndoResult,
     delete_project,
     export_project,
+    set_exposure_plan_enabled,
     undo_operation,
     update_project,
 )
@@ -35,6 +39,24 @@ from ..db.validate import ValidationError
 from ..db.writer import ProjectSpec
 
 router = APIRouter()
+
+
+class PlanEnabledBody(BaseModel):
+    enabled: bool
+
+
+@router.patch("/exposure-plans/{plan_id}/enabled", response_model=PlanEnabledResult)
+def set_plan_enabled(plan_id: int, body: PlanEnabledBody) -> PlanEnabledResult:
+    """Toggle one exposure plan's enabled flag (ts_assistant-ipq) via the staged-write
+    path. 404 when the plan is gone; 409 when the DB is busy/read-only."""
+    try:
+        return set_exposure_plan_enabled(plan_id, body.enabled)
+    except PlanNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (DatabaseBusyError, DatabaseReadOnlyError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/export", response_model=ExportResult)

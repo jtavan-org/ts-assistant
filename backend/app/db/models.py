@@ -23,6 +23,10 @@ class ExposurePlan(BaseModel):
     acquired: int = 0
     accepted: int = 0
     exposure_template_id: int | None = None
+    # Target Scheduler's per-plan enable flag (exposureplan.enabled, default 1). A
+    # disabled plan is skipped by the scheduler. Nullable-in-SQLite / non-null in EF,
+    # so a missing/NULL column reads as enabled.
+    enabled: bool = True
 
 
 class OverrideStep(BaseModel):

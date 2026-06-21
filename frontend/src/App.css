@@ -891,3 +891,53 @@
 .proj-prog.complete {
   color: #4ade80;
 }
+
+/* Per-filter exposure-plan rows with an enable/disable toggle (ts_assistant-ipq).
+   `.target` is a flex row; force these onto their own full-width line below it. */
+.target {
+  flex-wrap: wrap;
+}
+.plan-rows {
+  flex: 0 0 100%;
+  margin: 2px 0 0 16px !important;
+  padding: 0 !important;
+  list-style: none;
+}
+.plan-row-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 0;
+  cursor: default;
+}
+.plan-enable {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.plan-enable input {
+  cursor: pointer;
+}
+.plan-filter {
+  font-size: 12px;
+}
+.plan-row-item.disabled .plan-filter,
+.plan-row-item.disabled .plan-exp {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+.plan-exp {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.plan-prog {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.plan-prog.complete {
+  color: #4ade80;
+}

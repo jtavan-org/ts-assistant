@@ -89,6 +89,10 @@ class EditNotAllowedError(ExportError):
     """Refused to edit a project that isn't a safely-editable Draft (o2c)."""
 
 
+class PlanNotFoundError(ExportError):
+    """The exposure plan id to toggle doesn't exist in the database."""
+
+
 class ConcurrentModificationError(DatabaseBusyError):
     """The database changed on disk between when we staged a local copy and when we
     went to publish our result — another writer (e.g. NINA, or a file-sync pulling a
@@ -122,6 +126,15 @@ class DeleteResult(BaseModel):
     target_db: str
     backup_path: str
     deleted: dict[str, int]
+
+
+class PlanEnabledResult(BaseModel):
+    """Result of toggling a single exposure plan's enabled flag (ts_assistant-ipq)."""
+
+    plan_id: int
+    enabled: bool
+    target_db: str
+    backup_path: str
 
 
 class TemplateResult(BaseModel):
@@ -634,6 +647,79 @@ def update_project(
         plan_ids=result.plan_ids,
         template_ids=result.template_ids,
         counts=counts,
+    )
+
+
+def set_exposure_plan_enabled(
+    plan_id: int,
+    enabled: bool,
+    *,
+    target_db: str | Path | None = None,
+    now: datetime | None = None,
+) -> PlanEnabledResult:
+    """Toggle one exposure plan's ``enabled`` flag through the full staged-write path
+    (ts_assistant-ipq).
+
+    A single targeted UPDATE wrapped in the same backup + BEGIN IMMEDIATE + integrity
+    + FK-check + compare-and-swap publish machinery as the other writes, so it works
+    over network shares / file-sync replicas and never touches the source in place.
+    Not provenanced (it's an in-place flag flip, like ``update_project``); the
+    automatic pre-write backup is the recovery path. Allowed on any project state —
+    enabling/disabling a filter is valid for active/in-progress work, not just Drafts.
+    """
+    now = now or datetime.now(timezone.utc)
+
+    with _staged_write(target_db, now) as st:
+        conn = sqlite3.connect(str(st.work), isolation_level=None, timeout=CONNECT_TIMEOUT)
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            chk = conn.execute("PRAGMA quick_check").fetchone()[0]  # verify before locking
+            if chk != "ok":
+                raise ExportError(f"quick_check failed before write: {chk}")
+
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT Id FROM exposureplan WHERE Id = ?", (plan_id,)
+            ).fetchone()
+            if row is None:
+                raise PlanNotFoundError(f"exposure plan {plan_id} not found")
+            conn.execute(
+                "UPDATE exposureplan SET enabled = ? WHERE Id = ?",
+                (1 if enabled else 0, plan_id),
+            )
+            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if fk:
+                raise ExportError(f"foreign key violations: {fk[:5]}")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            conn.rollback()
+            raise _busy_or_export_error(e) from e
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    target_key = str(st.source.resolve())
+    set_target_state(target_key, last_seen_signature=st.new_signature)
+    record_op(
+        OpLogEntry(
+            operation_id="op_" + uuid.uuid4().hex,
+            written_at=now.isoformat(),
+            kind="plan_enabled",
+            target_db=target_key,
+            backup_path=st.backup.path,
+            status="committed",
+            project_guid=None,
+            counts={"exposureplan": 1},
+        )
+    )
+    return PlanEnabledResult(
+        plan_id=plan_id,
+        enabled=enabled,
+        target_db=target_key,
+        backup_path=st.backup.path,
     )
 
 

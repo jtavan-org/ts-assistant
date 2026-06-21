@@ -65,6 +65,14 @@ def test_exposure_plans_with_filter_names(reader):
     assert ha.accepted == 10
 
 
+def test_exposure_plan_enabled_defaults_true_when_column_absent(reader):
+    """The fixture's exposureplan has no `enabled` column (schema drift); the reader
+    must tolerate that and report plans as enabled (ts_assistant-ipq)."""
+    targets = {t.name: t for t in reader.load_targets()}
+    panel = targets["Panel 1-1"]
+    assert all(p.enabled is True for p in panel.exposure_plans)
+
+
 def test_loads_exposure_templates(reader):
     templates = reader.load_exposure_templates()
     by_filter = {t.filter_name: t for t in templates}

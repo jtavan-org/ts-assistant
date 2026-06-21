@@ -21,12 +21,15 @@ from app.db.export import (
     EditNotAllowedError,
     ExportError,
     ProgressError,
+    PlanNotFoundError,
     create_exposure_template,
     delete_project,
     export_project,
+    set_exposure_plan_enabled,
     undo_operation,
     update_project,
 )
+from app.db.reader import load_projects_conn
 from app.db.validate import ValidationError
 from app.db.writer import (
     ExposurePlanSpec,
@@ -903,3 +906,106 @@ def test_busy_db_fails_fast(tmp_path):
     names = [r[0] for r in conn.execute("SELECT name FROM project")]
     conn.close()
     assert names == ["Existing NINA project"]
+
+
+# --- exposure-plan enabled toggle (ts_assistant-ipq) ------------------------
+
+def _only_plan_id(db, project_id):
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    tgt = conn.execute(
+        "SELECT Id FROM target WHERE projectid = ?", (project_id,)
+    ).fetchone()["Id"]
+    pid = conn.execute(
+        "SELECT Id FROM exposureplan WHERE targetid = ?", (tgt,)
+    ).fetchone()["Id"]
+    conn.close()
+    return pid
+
+
+def test_write_project_defaults_plans_enabled(tmp_path):
+    """A fresh project's plans default to enabled, and the reader reports that."""
+    db = _baseline(tmp_path / "t.sqlite")
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    enabled_vals = [r["enabled"] for r in conn.execute("SELECT enabled FROM exposureplan")]
+    projects = load_projects_conn(conn)
+    conn.close()
+    assert enabled_vals == [1]
+    plan = projects[0].targets[0].exposure_plans[0]
+    assert plan.enabled is True
+
+
+def test_set_exposure_plan_enabled_persists_through_staged_write(tmp_path):
+    """Toggling a plan disabled writes enabled=0 and the reader reports enabled=False;
+    re-enabling round-trips back. Goes through the full staged-write + backup path."""
+    db = _baseline(tmp_path / "t.sqlite")
+    res = _export_draft(db)
+    plan_id = _only_plan_id(db, res.project_id)
+
+    out = set_exposure_plan_enabled(plan_id, False, target_db=db, now=T0)
+    assert out.plan_id == plan_id and out.enabled is False
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    raw = conn.execute("SELECT enabled FROM exposureplan WHERE Id = ?", (plan_id,)).fetchone()["enabled"]
+    assert raw == 0
+    plan = next(
+        p
+        for proj in load_projects_conn(conn)
+        for t in proj.targets
+        for p in t.exposure_plans
+        if p.id == plan_id
+    )
+    assert plan.enabled is False
+    conn.close()
+
+    # Flip back on.
+    set_exposure_plan_enabled(plan_id, True, target_db=db, now=T0)
+    conn = sqlite3.connect(db)
+    raw = conn.execute("SELECT enabled FROM exposureplan WHERE Id = ?", (plan_id,)).fetchone()[0]
+    conn.close()
+    assert raw == 1
+
+
+def test_set_exposure_plan_enabled_unknown_plan_raises(tmp_path):
+    db = _baseline(tmp_path / "t.sqlite")
+    before = _sha(db)
+    with pytest.raises(PlanNotFoundError):
+        set_exposure_plan_enabled(999999, False, target_db=db, now=T0)
+    assert _sha(db) == before  # missing plan -> byte-identical, nothing published
+
+
+def test_update_project_preserves_disabled_plan(tmp_path):
+    """A plan disabled via the toggle stays disabled across a project edit that keeps
+    it (reconcile UPDATE threads `enabled` through ExposurePlanSpec)."""
+    db = _baseline(tmp_path / "t.sqlite")
+    res = _export_draft(db)
+    pid = res.project_id
+    tgt, plan_id, etid = _first_target_and_plan(db, pid)
+    set_exposure_plan_enabled(plan_id, False, target_db=db, now=T0)
+
+    spec = ProjectSpec(
+        profile_id=PROFILE,
+        name="Draft EDITED",
+        state=0,
+        targets=[
+            TargetSpec(
+                id=tgt,
+                name="T1b",
+                ra_deg=130.0,
+                dec_deg=25.0,
+                exposure_plans=[
+                    ExposurePlanSpec(
+                        exposure=120.0, desired=25, exposure_template_id=etid, enabled=False
+                    )
+                ],
+            )
+        ],
+    )
+    update_project(pid, spec, target_db=db, now=T0)
+
+    conn = sqlite3.connect(db)
+    raw = conn.execute("SELECT enabled FROM exposureplan WHERE Id = ?", (plan_id,)).fetchone()[0]
+    conn.close()
+    assert raw == 0

@@ -43,6 +43,9 @@ class ExposurePlanSpec(BaseModel):
     acquired: int = 0
     accepted: int = 0
     exposure_template_id: int | None = None
+    # Target Scheduler's per-plan enable flag (default enabled); a disabled plan is
+    # skipped by the scheduler. Carried through create/update so a toggle persists.
+    enabled: bool = True
 
 
 class TargetSpec(BaseModel):
@@ -329,7 +332,7 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
                 "INSERT INTO exposureplan"
                 " (profileId, exposure, desired, acquired, accepted, targetid,"
                 "  exposureTemplateId, enabled, guid)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     spec.profile_id,
                     p.exposure,
@@ -338,6 +341,7 @@ def write_project(conn: sqlite3.Connection, spec: ProjectSpec) -> WriteResult:
                     p.accepted,
                     target_id,
                     template_id,
+                    1 if p.enabled else 0,
                     _guid(),
                 ),
             )
@@ -396,8 +400,11 @@ def _insert_plan(
         "INSERT INTO exposureplan"
         " (profileId, exposure, desired, acquired, accepted, targetid,"
         "  exposureTemplateId, enabled, guid)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
-        (profile_id, p.exposure, p.desired, p.acquired, p.accepted, target_id, template_id, _guid()),
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            profile_id, p.exposure, p.desired, p.acquired, p.accepted, target_id,
+            template_id, 1 if p.enabled else 0, _guid(),
+        ),
     )
     pid = int(ecur.lastrowid)
     plan_ids.append(pid)
@@ -455,8 +462,8 @@ def _reconcile_plans(
         etid = p.exposure_template_id
         if etid is not None and etid in existing:
             conn.execute(
-                "UPDATE exposureplan SET exposure = ?, desired = ? WHERE Id = ?",
-                (p.exposure, p.desired, existing[etid]),
+                "UPDATE exposureplan SET exposure = ?, desired = ?, enabled = ? WHERE Id = ?",
+                (p.exposure, p.desired, 1 if p.enabled else 0, existing[etid]),
             )
             plan_ids.append(existing[etid])
             desired.add(etid)
