@@ -8,6 +8,7 @@ column names are documented inline.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from typing import Any
 
 from .introspect import introspect
@@ -75,7 +76,7 @@ def load_projects() -> list[Project]:
     wc = get_working_copy()
     if wc is None:
         return []
-    with connect_readonly(wc) as conn:
+    with closing(connect_readonly(wc)) as conn:
         return load_projects_conn(conn)
 
 
@@ -281,7 +282,7 @@ def load_exposure_templates() -> list[ExposureTemplate]:
     wc = get_working_copy()
     if wc is None:
         return []
-    with connect_readonly(wc) as conn:
+    with closing(connect_readonly(wc)) as conn:
         return load_exposure_templates_conn(conn)
 
 
@@ -320,7 +321,7 @@ def load_profile_ids() -> list[str]:
     wc = get_working_copy()
     if wc is None:
         return []
-    with connect_readonly(wc) as conn:
+    with closing(connect_readonly(wc)) as conn:
         return load_profile_ids_conn(conn)
 
 
@@ -331,7 +332,7 @@ def schema_info() -> SchemaInfo:
     wc = get_working_copy()
     if wc is None:
         return SchemaInfo(tables={}, source_db=None, db_present=False)
-    with connect_readonly(wc) as conn:
+    with closing(connect_readonly(wc)) as conn:
         tables = introspect(conn)
     return SchemaInfo(
         tables={name: t.row_count for name, t in tables.items()},

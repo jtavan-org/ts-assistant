@@ -13,6 +13,7 @@ Run directly to dump the schema and (re)generate ``SCHEMA.md``:
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -113,7 +114,7 @@ def main() -> int:
             "sample_database/ (or set TS_ASSISTANT_DB) and re-run."
         )
         return 1
-    with connect_readonly(wc) as conn:
+    with closing(connect_readonly(wc)) as conn:
         tables = introspect(conn)
     md = render_markdown(tables)
     out = REPO_ROOT / "SCHEMA.md"

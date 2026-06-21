@@ -30,7 +30,16 @@ def get_working_copy(refresh: bool = True) -> Path | None:
 
 
 def connect_readonly(db_path: Path) -> sqlite3.Connection:
-    """Open a read connection (rows by name), rw-capable so WAL frames are visible."""
+    """Open a read connection (rows by name), rw-capable so WAL frames are visible.
+
+    Callers MUST close the connection after each read (e.g. ``with
+    closing(connect_readonly(...))``). Python's ``with sqlite3.connect(...)`` only
+    ends the transaction, it does NOT close the handle — and leaving read handles
+    open keeps this process's WAL index mapped, so when another process (NINA)
+    commits to the database the server keeps serving its cached view until it is
+    restarted. Opening and closing per read forces each request to pick up the
+    latest committed data.
+    """
     conn = sqlite3.connect(str(db_path), timeout=READ_TIMEOUT)
     conn.row_factory = sqlite3.Row
     return conn
