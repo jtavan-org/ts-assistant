@@ -150,9 +150,15 @@ function AladinView(
   // Sibling canvas, stacked over Aladin's own canvases, on which the target-frame
   // name labels are drawn rotated to match each box's bottom edge (see drawLabels).
   const labelCanvasRef = useRef<HTMLCanvasElement>(null);
-  // rAF handle that coalesces label redraws triggered by pan/zoom/resize so we
-  // repaint at most once per frame and the labels track the boxes without lag.
+  // rAF handle for the continuous per-frame label loop (paintLabels), so the labels
+  // track the boxes in lockstep with the view; cancelled on unmount.
   const labelRafRef = useRef<number>(0);
+  // Bumped whenever label-affecting data (FOV box, targets, draft) changes, so the
+  // continuous label loop repaints even while the view is otherwise static.
+  const labelEpochRef = useRef<number>(0);
+  // Signature of the last painted frame; lets the loop skip redundant repaints
+  // when nothing the labels depend on has moved (idle CPU saver).
+  const labelSigRef = useRef<string>("");
   const coverageOverlayRef = useRef<any>(null);
   const namedCircleRef = useRef<any>(null);
   const namedLabelRef = useRef<any>(null);
@@ -236,7 +242,7 @@ function AladinView(
       // The cyan FOV-box and amber draft-box NAME labels are no longer Aladin
       // catalog source labels (those are always screen-upright and overlapped the
       // frames). They are drawn on the sibling label canvas instead — rotated to
-      // match each box's bottom edge — by drawLabels()/scheduleLabelRedraw().
+      // match each box's bottom edge — by drawLabels(), driven per-frame by paintLabels().
 
       // Project-draft overlay, amber so it reads distinctly from the cyan
       // per-target FOV boxes that can be shown at the same time.
@@ -330,14 +336,10 @@ function AladinView(
       aladin.on("footprintClicked", () => closePopup());
 
       // Re-cull the named-object overlay when the zoom changes, so only objects
-      // large enough on-screen are drawn (debounced past the zoom animation).
-      // NOTE: aladin.on() keeps only ONE handler per event name, so the target-box
-      // label redraw must live inside this single zoomChanged handler.
+      // large enough on-screen are drawn (debounced past the zoom animation). The
+      // target-frame labels track the view via the continuous render loop below, so
+      // they need no per-event repaint here.
       aladin.on("zoomChanged", () => {
-        // The target-frame name labels follow the view: their bottom-edge angle,
-        // screen position and which boxes are big enough to label all change with
-        // zoom, so repaint the label canvas (coalesced to one frame).
-        scheduleLabelRedraw();
         if (!showNamedRef.current) return;
         window.clearTimeout(namedZoomTimerRef.current);
         namedZoomTimerRef.current = window.setTimeout(
@@ -345,10 +347,6 @@ function AladinView(
           120,
         );
       });
-      // Labels must track panning and host resizes too. These run every frame of a
-      // drag; scheduleLabelRedraw() coalesces them to one repaint per animation frame.
-      aladin.on("positionChanged", () => scheduleLabelRedraw());
-      aladin.on("resizeChanged", () => scheduleLabelRedraw());
 
       syncCatalog(targetsRef.current);
       syncFov(targetsRef.current, fovRef.current);
@@ -373,6 +371,16 @@ function AladinView(
       ro.observe(host);
       tryInit(); // already sized? go now.
     });
+
+    // Per-frame label loop: repaint the rotated frame labels in lockstep with the
+    // browser's paint (the cadence Aladin repaints at). Started in the effect body
+    // (not inside createAladin, which early-returns on a StrictMode remount) so it
+    // restarts cleanly on every mount; paintLabels() no-ops until the view exists.
+    const labelLoop = () => {
+      paintLabels();
+      labelRafRef.current = window.requestAnimationFrame(labelLoop);
+    };
+    labelRafRef.current = window.requestAnimationFrame(labelLoop);
 
     return () => {
       disposed = true;
@@ -437,7 +445,7 @@ function AladinView(
     // removeAll()/add() don't repaint until the view changes; force it so the
     // boxes appear/disappear immediately when toggled.
     aladinRef.current?.view?.requestRedraw?.();
-    scheduleLabelRedraw();
+    labelEpochRef.current++; // mark labels dirty for the render loop
   }
 
   function syncDraft(targets: TargetRender[] | null) {
@@ -451,7 +459,7 @@ function AladinView(
       }
     }
     aladinRef.current?.view?.requestRedraw?.();
-    scheduleLabelRedraw();
+    labelEpochRef.current++; // mark labels dirty for the render loop
   }
 
   // ----- Rotated target-frame name labels (sibling canvas) -------------------
@@ -574,18 +582,33 @@ function AladinView(
     }
   }
 
-  /** Coalesce label repaints to one per animation frame (pan fires per-frame). */
-  function scheduleLabelRedraw() {
-    if (labelRafRef.current) return;
-    labelRafRef.current = window.requestAnimationFrame(() => {
-      labelRafRef.current = 0;
-      try {
-        drawLabels();
-      } catch {
-        // A projection/draw hiccup must never wedge the overlay loop; the next
-        // pan/zoom will reschedule a clean repaint.
-      }
-    });
+  /**
+   * Paint the rotated frame labels if anything they depend on has moved since the
+   * last frame. Driven every animation frame by the loop effect below, in lockstep
+   * with the browser's paint (the cadence Aladin repaints at). Aladin's
+   * `positionChanged`/`zoomChanged` events fire too sparsely during an inertial pan,
+   * so an event-driven repaint left the labels lagging frames behind their boxes —
+   * they appeared to float away and judder, then snapped back when motion stopped.
+   * A cheap view+data signature skips the repaint when nothing has changed, so an
+   * idle view costs ~nothing. Safely no-ops until the Aladin view exists.
+   */
+  function paintLabels() {
+    const aladin = aladinRef.current;
+    const host = divRef.current;
+    if (!aladin || !host) return;
+    const c = aladin.getRaDec?.();
+    const ra = Array.isArray(c) ? c[0] : 0;
+    const dec = Array.isArray(c) ? c[1] : 0;
+    const sig =
+      `${ra},${dec},${currentFovDeg(aladin)},` +
+      `${host.clientWidth}x${host.clientHeight},${labelEpochRef.current}`;
+    if (sig === labelSigRef.current) return;
+    labelSigRef.current = sig;
+    try {
+      drawLabels();
+    } catch {
+      // A projection/draw hiccup must never wedge the loop; the next frame retries.
+    }
   }
 
   // Named-object overlay: a circle sized to each object's angular extent plus a
@@ -740,7 +763,6 @@ function AladinView(
   // Project-draft changes.
   useEffect(() => {
     if (aladinRef.current) syncDraft(draft);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
   // Named-object overlay toggled.
