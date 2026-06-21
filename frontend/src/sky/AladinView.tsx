@@ -321,12 +321,16 @@ function AladinView(
           .querySelectorAll<HTMLElement>(".aladin-closeBtn")
           .forEach((b) => b.click());
 
+      // objectClicked fires for catalog markers (obj.data.id) AND for overlay
+      // footprints — so a click on a target's FOV frame resolves via the tsTargetId
+      // we tag onto its polygon. Either selects the target; empty sky closes popups.
       aladin.on("objectClicked", (obj: any) => {
-        const id = obj?.data?.id;
+        const id = obj?.data?.id ?? obj?.tsTargetId;
         if (id != null) onClickRef.current?.(Number(id));
         else closePopup();
       });
-      // Clicking a FOV box (a footprint) rather than empty sky also dismisses it.
+      // A footprint click also fires footprintClicked; selection is handled in
+      // objectClicked above, so here we just dismiss any open marker popup.
       aladin.on("footprintClicked", () => closePopup());
 
       // Re-cull the named-object overlay when the zoom changes, so only objects
@@ -412,28 +416,20 @@ function AladinView(
     ov.removeAll();
     if (box) {
       for (const t of items) {
-        ov.add(
-          A.polygon(
-            fovCorners(
-              t.ra_deg,
-              t.dec_deg,
-              box.widthDeg,
-              box.heightDeg,
-              t.rotation,
-            ),
-          ),
+        // Tag the frame polygon + its orientation triangle with the target id so a
+        // click on the frame selects that target. Aladin's objectClicked fires for
+        // overlay footprints too (not just catalog markers); the handler reads this
+        // tsTargetId back off the same shape instance.
+        const frame = A.polygon(
+          fovCorners(t.ra_deg, t.dec_deg, box.widthDeg, box.heightDeg, t.rotation),
         );
-        ov.add(
-          A.polygon(
-            fovTopTriangle(
-              t.ra_deg,
-              t.dec_deg,
-              box.widthDeg,
-              box.heightDeg,
-              t.rotation,
-            ),
-          ),
+        const tri = A.polygon(
+          fovTopTriangle(t.ra_deg, t.dec_deg, box.widthDeg, box.heightDeg, t.rotation),
         );
+        frame.tsTargetId = t.id;
+        tri.tsTargetId = t.id;
+        ov.add(frame);
+        ov.add(tri);
       }
     }
     // removeAll()/add() don't repaint until the view changes; force it so the
