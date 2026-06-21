@@ -23,11 +23,13 @@ from app.db.export import (
     DatabaseReadOnlyError,
     _publish,
     _stage_in,
+    create_exposure_template,
     export_project,
 )
 from app.db.backup import backup_signature
 from app.db.writer import (
     ExposurePlanSpec,
+    ExposureTemplateSpec,
     ProjectSpec,
     TargetSpec,
     create_scheduler_db,
@@ -82,6 +84,10 @@ def _new_project():
             )
         ],
     )
+
+
+def _new_template():
+    return ExposureTemplateSpec(profile_id=PROFILE, name="Staged Template", filter_name="Ha")
 
 
 def _count(db, table):
@@ -183,3 +189,48 @@ def test_staged_write_succeeds_and_persists(tmp_path):
     assert _count(db, "project") == before + 1
     names = {r[0] for r in sqlite3.connect(db).execute("SELECT name FROM project")}
     assert "Staged Project" in names
+
+
+# --- exposure-template create under staged writes (regression: dxg) --------
+# ts_assistant-dxg: POST /api/exposure-templates used to 400 with "attempt to write a
+# readonly database" because the write hit the source in place. Staged writes (PR #34/#35)
+# mean creates run on a local copy and publish by rename, so a read-only *file* no longer
+# fails, and a read-only *directory* surfaces as DatabaseReadOnlyError (-> 409), never a
+# bare 400/500.
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission checks")
+def test_create_template_with_readonly_source_file_succeeds(tmp_path):
+    """The original repro: the DB file itself is read-only (0o444). Because the write
+    runs on a local working copy and publishes by atomic rename into the (writable)
+    directory, the create SUCCEEDS instead of failing with SQLITE_READONLY."""
+    db = _baseline(tmp_path / "t.sqlite")
+    before = _count(db, "exposuretemplate")
+    os.chmod(db, 0o444)  # read-only file: an in-place write would raise SQLITE_READONLY
+    try:
+        res = create_exposure_template(_new_template(), target_db=db, now=T0)
+    finally:
+        os.chmod(db, 0o644)
+    assert res.template_id > 0
+    assert _count(db, "exposuretemplate") == before + 1
+    names = {r[0] for r in sqlite3.connect(db).execute("SELECT name FROM exposuretemplate")}
+    assert "Staged Template" in names
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses directory permission checks")
+def test_create_template_in_unwritable_dir_raises_readonly(tmp_path):
+    """If the DB's folder isn't writable, publish can't rename in, so the create raises
+    DatabaseReadOnlyError (which the templates router maps to 409) rather than a raw
+    OSError / unhandled 400/500."""
+    dbdir = tmp_path / "dbdir"
+    dbdir.mkdir()
+    db = _baseline(dbdir / "t.sqlite")
+    before = _count(db, "exposuretemplate")
+    os.chmod(dbdir, 0o555)  # readable (staging can read) but not writable
+    try:
+        with pytest.raises(DatabaseReadOnlyError):
+            create_exposure_template(_new_template(), target_db=db, now=T0)
+    finally:
+        os.chmod(dbdir, 0o755)
+    # The read-only environment left the source untouched.
+    assert _count(db, "exposuretemplate") == before

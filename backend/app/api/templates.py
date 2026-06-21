@@ -3,9 +3,10 @@
 GET (qiz.1) serves the user's existing Target Scheduler exposure templates so the
 Project builder can reference a real template by Id. POST (qiz.5) creates a new
 template additively (one row, backed-up + provenanced + undoable) via the export
-orchestrator; it writes in place on the configured database, taking a backup first,
-like project saves. Editing/deleting existing templates is out of scope (that's a
-modify op).
+orchestrator. Like project saves, the write runs on a local working copy and is
+published back to the configured database via an atomic compare-and-swap (staged
+writes), taking a backup first. Editing/deleting existing templates is out of scope
+(that's a modify op).
 """
 
 from __future__ import annotations
