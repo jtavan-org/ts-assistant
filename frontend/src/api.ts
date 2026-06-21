@@ -191,6 +191,8 @@ export interface Health {
   /** Why writes would fail, when db_writable is false. */
   write_error: string | null;
   error: string | null;
+  /** Cheap source-DB change token (size + mtime); polled to auto-refresh (kfc). */
+  db_version: string | null;
 }
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -348,6 +350,16 @@ const scoped = (path: string, profileId?: string) =>
   profileId ? `${path}?profile_id=${encodeURIComponent(profileId)}` : path;
 
 export const fetchHealth = () => getJSON<Health>("/health");
+
+// --- DB change token (kfc) -------------------------------------------------
+// A cheap signature of the source Target Scheduler DB (size + mtime). The UI
+// polls this and, when it changes, refetches data in place to reflect external
+// writes (NINA acquisitions, or our own publish) without a manual reload.
+export interface DbVersion {
+  db_version: string | null;
+}
+export const fetchDbVersion = () => getJSON<DbVersion>("/db-version");
+
 export const fetchSurveys = () => getJSON<Survey[]>("/surveys");
 export const fetchProjects = () => getJSON<Project[]>("/projects");
 export const fetchProfiles = () => getJSON<ProfileInfo[]>("/profiles");

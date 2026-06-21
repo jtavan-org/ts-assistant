@@ -6,6 +6,7 @@ import {
   createExposureTemplate,
   createPlanTemplate,
   deletePlanTemplate,
+  fetchDbVersion,
   fetchExposureTemplates,
   fetchHealth,
   fetchPlanTemplates,
@@ -90,6 +91,11 @@ export default function App() {
   const templateResolverRef = useRef<((t: ExposureTemplate | null) => void) | null>(null);
   const aladinRef = useRef<AladinHandle>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  // Auto-refresh bookkeeping (kfc): the last DB change token we reconciled to, and
+  // a flag set when a token change arrives while an edit is in progress so we can
+  // re-apply the deferred refresh the moment the edit ends.
+  const dbVersionRef = useRef<string | null>(null);
+  const pendingRefreshRef = useRef(false);
 
   useEffect(() => {
     fetchSurveys()
@@ -98,7 +104,14 @@ export default function App() {
         setSurveyId(s.find((x) => x.is_default)?.id ?? s[0]?.id ?? "");
       })
       .catch((e) => setError(String(e)));
-    fetchHealth().then(setHealth).catch(() => {});
+    fetchHealth()
+      .then((h) => {
+        setHealth(h);
+        // Seed the change token from the initial health payload so the first poll
+        // doesn't fire a spurious refresh (kfc).
+        if (dbVersionRef.current === null) dbVersionRef.current = h.db_version;
+      })
+      .catch(() => {});
     fetchProjects()
       .then(setProjects)
       .catch((e) => setError(String(e)));
@@ -678,6 +691,85 @@ export default function App() {
       rotationDeg: g.rotationDeg,
     });
   }
+
+  // --- Auto-refresh on external DB change (kfc) ----------------------------
+  // An edit is "in progress" — and must NOT be clobbered by a refresh — whenever
+  // the user has unsaved work or an open modal: a draft/edit being built, a save
+  // or delete in flight, an active sky-placement mode, or the new-template modal.
+  // Refreshing while any of these is true would discard input or close the modal.
+  const editInProgress =
+    projectDraft !== null || saving || placeMode !== null || templateModalOpen;
+  // Read the latest value from inside the polling interval without re-arming it.
+  const editInProgressRef = useRef(editInProgress);
+  useEffect(() => {
+    editInProgressRef.current = editInProgress;
+  }, [editInProgress]);
+
+  // Refetch the DB-backed data and replace it in state. This is intentionally
+  // surgical: it touches ONLY the data lists (projects/templates/profiles/health).
+  // It does NOT change `focus`, so the Aladin view keeps its exact center/zoom/
+  // rotation (the view only moves when `focus.key` changes), and it never remounts
+  // Aladin (overlays update in place via the targets prop). `selectedTargetId`,
+  // the Projects accordion state, expanded panels and scroll position are all
+  // owned elsewhere and left untouched, so selection and layout stay put.
+  function refreshData() {
+    fetchProjects().then(setProjects).catch(() => {});
+    fetchExposureTemplates().then(setTemplates).catch(() => {});
+    fetchProfiles().then(setProfileList).catch(() => {});
+    if (activeProfileId) {
+      fetchPlanTemplates(activeProfileId).then(setPlanTemplates).catch(() => {});
+    }
+    fetchHealth().then(setHealth).catch(() => {});
+  }
+
+  // Poll the cheap change token. When it differs from the last token we
+  // reconciled to, refresh — but DEFER while an edit is in progress, recording
+  // that a refresh is owed so it runs the instant the edit ends.
+  useEffect(() => {
+    const POLL_MS = 7000; // ~7s: responsive without hammering the backend.
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const { db_version } = await fetchDbVersion();
+        if (stopped || db_version == null) return;
+        // First successful poll before health seeded the token: adopt it quietly.
+        if (dbVersionRef.current === null) {
+          dbVersionRef.current = db_version;
+          return;
+        }
+        if (db_version === dbVersionRef.current) return;
+        if (editInProgressRef.current) {
+          pendingRefreshRef.current = true; // defer; don't clobber the edit
+          return;
+        }
+        dbVersionRef.current = db_version;
+        pendingRefreshRef.current = false;
+        refreshData();
+      } catch {
+        /* transient network error — try again next tick */
+      }
+    };
+    const id = window.setInterval(tick, POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProfileId]);
+
+  // When an edit finishes, apply any refresh that was deferred while it was in
+  // progress, reconciling to the freshest token.
+  useEffect(() => {
+    if (editInProgress || !pendingRefreshRef.current) return;
+    pendingRefreshRef.current = false;
+    fetchDbVersion()
+      .then(({ db_version }) => {
+        if (db_version != null) dbVersionRef.current = db_version;
+        refreshData();
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editInProgress]);
 
   return (
     <div className="app">

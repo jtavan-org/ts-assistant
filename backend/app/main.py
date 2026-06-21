@@ -26,6 +26,7 @@ from .api import (
     templates,
 )
 from .config import BACKUP_DIR, find_source_db
+from .db.backup import backup_signature
 
 logger = logging.getLogger("ts_assistant")
 
@@ -118,6 +119,23 @@ app.include_router(plan_templates.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
 
 
+def _db_version(source) -> str | None:
+    """Cheap change token for the source DB (size + mtime, incl. ``-wal``).
+
+    Reuses :func:`backup_signature` so it stays consistent with the staged-write /
+    publish logic — our own publish rewrites the source and bumps this, and an
+    external NINA write does too (kfc). The frontend polls this token and triggers a
+    state-preserving refresh when it changes. ``None`` when no DB is present or it
+    can't be stat'd yet (degrade gracefully rather than 500).
+    """
+    if source is None:
+        return None
+    try:
+        return backup_signature(source)
+    except OSError:
+        return None
+
+
 @app.get("/api/health")
 def health() -> dict:
     source = find_source_db()
@@ -132,4 +150,17 @@ def health() -> dict:
         "db_writable": source is not None and open_error is None and write_error is None,
         "write_error": write_error,
         "error": open_error,
+        # Lightweight change token so the UI can detect external DB writes (kfc).
+        "db_version": _db_version(source),
     }
+
+
+@app.get("/api/db-version")
+def db_version() -> dict:
+    """Tiny, cheap change token the frontend polls to auto-refresh on DB change (kfc).
+
+    Separate from /api/health (which also probes writability) so the poll stays
+    near-free: a single ``stat`` of the source DB (+ its ``-wal`` sidecar).
+    """
+    source = find_source_db()
+    return {"db_version": _db_version(source)}
