@@ -58,36 +58,6 @@ def _epoch_label(code: Any) -> str:
         return "J2000"
 
 
-def _pending_grading_map(
-    conn: sqlite3.Connection, table: str | None
-) -> dict[tuple[int, str], int]:
-    """Map (targetId, lower-cased filterName) -> count of captured-but-ungraded frames.
-
-    Counts acquiredimage rows with gradingStatus == 0 (pending) per target+filter — the
-    frames that could still be graded as accepted. Accepted (1) and rejected (2) are
-    excluded. SQLite identifiers are case-insensitive, so the canonical column names
-    match regardless of stored case; tolerant of the table/column being absent.
-    """
-    out: dict[tuple[int, str], int] = {}
-    if not table:
-        return out
-    try:
-        rows = conn.execute(
-            f'SELECT targetid AS tid, filtername AS fname, COUNT(*) AS n '
-            f'FROM "{table}" WHERE gradingstatus = 0 GROUP BY targetid, filtername'
-        )
-    except sqlite3.OperationalError:
-        return out
-    for r in rows:
-        tid = r["tid"]
-        if tid is None:
-            continue
-        fname = r["fname"]
-        key = (int(tid), str(fname).lower() if fname is not None else "")
-        out[key] = int(r["n"] or 0)
-    return out
-
-
 def _template_filter_map(conn: sqlite3.Connection, table: str | None) -> dict[int, str]:
     """Map ExposureTemplate.Id -> filterName for resolving plan filter labels."""
     if not table:
@@ -125,12 +95,10 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
     t_template = _find_table(tables, "exposuretemplate", "exposure_template")
     t_ruleweight = _find_table(tables, "ruleweight", "rule_weight")
     t_oeo = _find_table(tables, "overrideexposureorderitem")
-    t_acquired = _find_table(tables, "acquiredimage", "acquired_image")
     if not t_project or not t_target:
         return []
 
     filter_by_template = _template_filter_map(conn, t_template)
-    pending_by_target_filter = _pending_grading_map(conn, t_acquired)
 
     # Rule weights grouped by project (the planner's scoring knobs; o2c edits them).
     weights_by_project: dict[int, list[RuleWeight]] = {}
@@ -173,19 +141,15 @@ def load_projects_conn(conn: sqlite3.Connection) -> list[Project]:
             if target_id is None:
                 continue
             tmpl_id = _row_get(r, "ExposureTemplateId", "exposureTemplateId")
-            filter_name = filter_by_template.get(
-                int(tmpl_id) if tmpl_id is not None else -1
-            )
             plan = ExposurePlan(
                 id=int(_row_get(r, "Id", "id")),
-                filter_name=filter_name,
+                filter_name=filter_by_template.get(
+                    int(tmpl_id) if tmpl_id is not None else -1
+                ),
                 exposure=_row_get(r, "exposure"),
                 desired=int(_row_get(r, "desired", default=0) or 0),
                 acquired=int(_row_get(r, "acquired", default=0) or 0),
                 accepted=int(_row_get(r, "accepted", default=0) or 0),
-                pending_grading=pending_by_target_filter.get(
-                    (int(target_id), filter_name.lower() if filter_name else ""), 0
-                ),
                 exposure_template_id=int(tmpl_id) if tmpl_id is not None else None,
                 # exposureplan.enabled (default 1); NULL/missing → enabled.
                 enabled=bool(_row_get(r, "enabled", default=1)),

@@ -27,9 +27,6 @@ export interface ExposurePlan {
   desired: number;
   acquired: number;
   accepted: number;
-  /** Captured frames awaiting grading (gradingStatus pending), excluding rejected.
-   * Shown as the parenthetical in "accepted (pending)/desired". */
-  pending_grading: number;
   exposure_template_id: number | null;
   /** Target Scheduler's per-plan enable flag; a disabled plan is skipped. */
   enabled: boolean;

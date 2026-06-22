@@ -73,18 +73,6 @@ def test_exposure_plan_enabled_defaults_true_when_column_absent(reader):
     assert all(p.enabled is True for p in panel.exposure_plans)
 
 
-def test_pending_grading_counts_only_ungraded(reader):
-    """pending_grading is captured-but-ungraded frames (gradingStatus 0), excluding
-    accepted (1) and rejected (2) — the parenthetical in 'accepted (pending)/desired'
-    (ts_assistant-vfh). The fixture seeds M31/Ha with 5 pending, 3 accepted, 2 rejected."""
-    targets = {t.name: t for t in reader.load_targets()}
-    ha = targets["M31"].exposure_plans[0]
-    assert ha.filter_name == "Ha"
-    assert ha.pending_grading == 5
-    # Targets with no acquiredimage rows report zero (not None).
-    assert targets["Panel 1-1"].exposure_plans[0].pending_grading == 0
-
-
 def test_loads_exposure_templates(reader):
     templates = reader.load_exposure_templates()
     by_filter = {t.filter_name: t for t in templates}

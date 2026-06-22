@@ -663,7 +663,6 @@ export default function App() {
             desired: p.desired,
             acquired: 0,
             accepted: 0,
-            pending_grading: 0,
             exposure_template_id: p.exposure_template_id ?? null,
             enabled: true,
           })),
