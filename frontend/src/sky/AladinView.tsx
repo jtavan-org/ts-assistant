@@ -22,6 +22,11 @@ import { NAMED_OBJECTS, objectLabel } from "./skyObjects";
 //     drawn. The budget does the decluttering; this floor just suppresses noise.
 const MAX_NAMED_IN_VIEW = 30;
 const NAMED_MIN_SCREEN_PX = 3;
+// Re-cull cadence during a pan/zoom (xmb). A leading+trailing throttle at this
+// interval refreshes which objects are in view ~10x/sec while panning, instead of
+// a trailing debounce that only fired once motion stopped. A single re-cull is
+// cheap (~1-3ms), so 10/sec is comfortably affordable.
+const NAMED_RECULL_THROTTLE_MS = 100;
 
 // A target-box name label is drawn only when the box is at least this fraction of
 // the current field-of-view wide. The same zoom-aware declutter the named-object
@@ -166,6 +171,8 @@ function AladinView(
   const darkCircleRef = useRef<any>(null);
   const darkLabelRef = useRef<any>(null);
   const namedZoomTimerRef = useRef<number>(0);
+  // Timestamp of the last named-object re-cull, for the pan/zoom throttle (xmb).
+  const namedRecullAtRef = useRef<number>(0);
   const draggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -357,13 +364,26 @@ function AladinView(
       // one timer). Aladin keeps a single handler per event name, so each on(...)
       // below registers exactly one. The target-frame labels track the view via
       // the continuous render loop below, so they need no per-event repaint here.
+      // Leading+trailing throttle: refresh the in-view set right away if the last
+      // re-cull was more than the interval ago (so membership updates live as you
+      // pan), otherwise schedule one at the end of the window (so a fast flick still
+      // lands a final update). Bounded to ~10 re-culls/sec during continuous motion.
       const recullNamed = () => {
         if (!showNamedRef.current) return;
+        const run = () => {
+          namedRecullAtRef.current = performance.now();
+          syncNamed(showNamedRef.current);
+        };
         window.clearTimeout(namedZoomTimerRef.current);
-        namedZoomTimerRef.current = window.setTimeout(
-          () => syncNamed(showNamedRef.current),
-          120,
-        );
+        const sinceLast = performance.now() - namedRecullAtRef.current;
+        if (sinceLast >= NAMED_RECULL_THROTTLE_MS) {
+          run();
+        } else {
+          namedZoomTimerRef.current = window.setTimeout(
+            run,
+            NAMED_RECULL_THROTTLE_MS - sinceLast,
+          );
+        }
       };
       aladin.on("zoomChanged", recullNamed);
       aladin.on("positionChanged", recullNamed);
