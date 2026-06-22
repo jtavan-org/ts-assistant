@@ -24,31 +24,38 @@ function isEditable(p: Project): boolean {
 
 /** Roll exposure plans up into acquisition totals. `pending` is frames still
  * needed to reach the goal by the real "done" count (accepted = passed grading);
- * `pendingGrading` is captured-but-ungraded frames (could still become accepted). */
+ * `captured` is frames acquired but not yet accepted (acquired − accepted), per plan.
+ *
+ * `captured` is derived from each plan's own acquired/accepted counters (which NINA
+ * maintains per plan), NOT by counting acquiredimage rows: Target Scheduler tags an
+ * acquired image only with target + filter NAME, never the specific plan, so counting
+ * images double-credits two plans that share a filter (e.g. R_600s and R_Stars). It
+ * therefore means "captured, not yet accepted" (pending grading, plus any rejected —
+ * TS exposes no per-plan rejected count). See ts_assistant-8q2. */
 function planTotals(plans: ExposurePlan[]) {
   let desired = 0;
   let acquired = 0;
   let accepted = 0;
-  let pendingGrading = 0;
+  let captured = 0;
   for (const p of plans) {
     desired += p.desired;
     acquired += p.acquired;
     accepted += p.accepted;
-    pendingGrading += p.pending_grading ?? 0;
+    captured += Math.max(0, p.acquired - p.accepted);
   }
   return {
     desired,
     acquired,
     accepted,
-    pendingGrading,
+    captured,
     pending: Math.max(0, desired - accepted),
   };
 }
 
 /** Compact completion badge, green once the goal is met. Shows "accepted/desired",
- * or "accepted (pending)/desired" when frames are captured but not yet graded — e.g.
- * "0 (45)/60" — so a not-yet-graded run doesn't look like no progress at all.
- * Hover shows the fuller desired/acquired/accepted/captured-ungraded/pending breakdown. */
+ * or "accepted (captured)/desired" when frames are captured but not yet accepted —
+ * e.g. "0 (4)/60" — so a not-yet-graded run doesn't look like no progress at all.
+ * Hover shows the fuller desired/acquired/accepted/not-accepted/to-go breakdown. */
 function Completion({ plans, className }: { plans: ExposurePlan[]; className: string }) {
   const t = planTotals(plans);
   if (!t.desired) return null;
@@ -58,12 +65,12 @@ function Completion({ plans, className }: { plans: ExposurePlan[]; className: st
       className={className + (done ? " complete" : "")}
       title={
         `desired ${t.desired} · acquired ${t.acquired} · accepted ${t.accepted}` +
-        ` · ${t.pendingGrading} awaiting grading · ${t.pending} to go`
+        ` · ${t.captured} not yet accepted · ${t.pending} to go`
       }
     >
       {t.accepted}
-      {t.pendingGrading > 0 && (
-        <span className="prog-pending"> ({t.pendingGrading})</span>
+      {t.captured > 0 && (
+        <span className="prog-pending"> ({t.captured})</span>
       )}
       /{t.desired}
     </span>

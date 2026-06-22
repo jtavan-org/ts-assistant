@@ -203,17 +203,6 @@ def build(path: Path) -> None:
         " VALUES (?, ?, ?, ?)",
         [(m31_target, 1, 0, 0), (m31_target, 2, 1, -1)],
     )
-    # M31/Ha acquired images at each grading status, so the reader's pending-grading
-    # (captured-but-ungraded) count can be exercised: 5 pending (0), 3 accepted (1),
-    # 2 rejected (2). Only the 5 pending should be counted.
-    acquired_rows = []
-    for status, n in ((0, 5), (1, 3), (2, 2)):
-        acquired_rows += [(p2, m31_target, "Ha", status) for _ in range(n)]
-    conn.executemany(
-        "INSERT INTO acquiredimage (projectId, targetId, filtername, gradingStatus, metadata)"
-        " VALUES (?, ?, ?, ?, '{}')",
-        acquired_rows,
-    )
     _seed_rule_weights(conn, p2)
 
     conn.commit()

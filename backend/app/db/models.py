@@ -22,11 +22,6 @@ class ExposurePlan(BaseModel):
     desired: int = 0
     acquired: int = 0
     accepted: int = 0
-    # Captured frames awaiting grading: acquiredimage rows for this target+filter with
-    # gradingStatus == 0 (pending). These could still be graded as accepted, so they're
-    # surfaced as the parenthetical in "accepted (pending)/desired". Rejected
-    # (gradingStatus == 2) and already-accepted (1) frames are excluded.
-    pending_grading: int = 0
     exposure_template_id: int | None = None
     # Target Scheduler's per-plan enable flag (exposureplan.enabled, default 1). A
     # disabled plan is skipped by the scheduler. Nullable-in-SQLite / non-null in EF,
