@@ -844,6 +844,9 @@ export default function App() {
         {error && <div className="error">{error}</div>}
       </header>
 
+      {/* Only surface actionable problems here. The normal-state banner used to name
+          the DB file, but it's always schedulerdb.sqlite (and a meaningless path when
+          bind-mounted into Docker), so it just took viewport space (15n). */}
       {health?.error ? (
         <div className="db-banner db-error">
           ⚠ Can’t open the Target Scheduler database — {health.error}
@@ -853,15 +856,7 @@ export default function App() {
           ⚠ Changes can’t be saved — the database folder isn’t writable.{" "}
           {health.write_error ?? ""}
         </div>
-      ) : (
-        health?.db_present && (
-          <div className="db-banner" title={health.db_path ?? undefined}>
-            Working on{" "}
-            <strong>{health.db_path?.split(/[/\\]/).pop()}</strong> · a backup is taken
-            before every change
-          </div>
-        )
-      )}
+      ) : null}
 
       <div className="body">
         <aside className="sidebar" ref={sidebarRef}>
