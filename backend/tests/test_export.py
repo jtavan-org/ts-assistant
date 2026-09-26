@@ -30,6 +30,7 @@ from app.db.export import (
     update_project,
 )
 from app.db.reader import load_projects_conn
+from app.db.schema import create_schema
 from app.db.validate import ValidationError
 from app.db.writer import (
     ExposurePlanSpec,
@@ -1009,3 +1010,89 @@ def test_update_project_preserves_disabled_plan(tmp_path):
     raw = conn.execute("SELECT enabled FROM exposureplan WHERE Id = ?", (plan_id,)).fetchone()[0]
     conn.close()
     assert raw == 0
+
+
+# --- pre-existing NINA orphans don't block writes ---------------------------
+
+
+def _add_nina_orphans(db):
+    """Leave FK orphans like a real NINA DB accumulates (NINA doesn't enforce FKs):
+    image data whose acquired image was deleted, and a plan whose target was deleted."""
+    conn = sqlite3.connect(db)
+    etid = conn.execute("SELECT MIN(Id) FROM exposuretemplate").fetchone()[0]
+    conn.execute("INSERT INTO imagedata (tag, acquiredimageid) VALUES ('x', 9999)")
+    conn.execute(
+        "INSERT INTO exposureplan (profileId, exposure, targetid, exposureTemplateId)"
+        " VALUES (?, 60, 9999, ?)",
+        (PROFILE, etid),
+    )
+    conn.commit()
+    orphans = conn.execute("PRAGMA foreign_key_check").fetchall()
+    conn.close()
+    assert len(orphans) == 2
+    return orphans
+
+
+def test_writes_succeed_despite_preexisting_fk_orphans(tmp_path):
+    """Regression: every write used to fail with 'foreign key violations' on a DB that
+    already had orphans, because the FK check was DB-wide rather than per-write."""
+    db = _baseline(tmp_path / "t.sqlite")
+    orphans = _add_nina_orphans(db)
+
+    res = _export_draft(db)
+    tgt, plan_id, etid = _first_target_and_plan(db, res.project_id)
+    set_exposure_plan_enabled(plan_id, False, target_db=db, now=T0)
+
+    # Toggling the orphaned plan itself is fine too (updates only a non-FK column).
+    conn = sqlite3.connect(db)
+    orphan_plan = conn.execute("SELECT Id FROM exposureplan WHERE targetid = 9999").fetchone()[0]
+    conn.close()
+    set_exposure_plan_enabled(orphan_plan, False, target_db=db, now=T0)
+
+    update_project(
+        res.project_id,
+        ProjectSpec(
+            profile_id=PROFILE,
+            name="Draft EDITED",
+            state=0,
+            targets=[
+                TargetSpec(
+                    id=tgt,
+                    name="T1",
+                    ra_deg=120.0,
+                    dec_deg=20.0,
+                    exposure_plans=[ExposurePlanSpec(exposure=120.0, exposure_template_id=etid)],
+                )
+            ],
+        ),
+        target_db=db,
+        now=T0,
+    )
+    tmpl = create_exposure_template(
+        ExposureTemplateSpec(profile_id=PROFILE, name="Ha", filter_name="Ha"),
+        target_db=db,
+        now=T0,
+    )
+    undo_operation(tmpl.operation_id, target_db=db, now=T0)
+    delete_project(res.project_id, target_db=db, now=T0)
+
+    conn = sqlite3.connect(db)
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == orphans  # left untouched
+    conn.close()
+
+
+def test_fk_check_rejects_new_violation_readably():
+    """The per-write check still catches violations the write introduced, and reports
+    them readably (not as '<sqlite3.Row object ...>'), omitting pre-existing ones."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    create_schema(conn)
+    conn.execute("INSERT INTO imagedata (tag, acquiredimageid) VALUES ('old', 9999)")
+    before = export._fk_violations(conn)
+    export._assert_no_new_fk_violations(conn, before)  # nothing new -> no error
+
+    conn.execute("INSERT INTO imagedata (tag, acquiredimageid) VALUES ('new', 4242)")
+    with pytest.raises(ExportError) as e:
+        export._assert_no_new_fk_violations(conn, before)
+    conn.close()
+    assert str(e.value) == "foreign key violations: imagedata row 2 -> missing acquiredimage"
