@@ -202,6 +202,29 @@ def _assert_additive(
                 raise ExportError(f"non-additive id reuse in {t}: Id {row_id} <= prior max {max_before[t]}")
 
 
+FkViolation = tuple[str, int | None, str, int]  # (table, rowid, parent, fkid)
+
+
+def _fk_violations(conn: sqlite3.Connection) -> set[FkViolation]:
+    return {tuple(r) for r in conn.execute("PRAGMA foreign_key_check")}  # type: ignore[misc]
+
+
+def _assert_no_new_fk_violations(
+    conn: sqlite3.Connection, before: set[FkViolation], context: str = ""
+) -> None:
+    """Fail only on FK violations this write introduced.
+
+    NINA doesn't enforce foreign keys, so real databases routinely carry orphans (e.g.
+    ``imagedata`` rows whose ``acquiredimage`` was deleted). A DB-wide check would refuse
+    every write on such a DB, so compare against the pre-write ``before`` snapshot instead.
+    """
+    new = sorted(_fk_violations(conn) - before, key=repr)
+    if new:
+        shown = ", ".join(f"{t} row {rowid} -> missing {parent}" for t, rowid, parent, _ in new[:5])
+        more = f" (+{len(new) - 5} more)" if len(new) > 5 else ""
+        raise ExportError(f"foreign key violations{context}: {shown}{more}")
+
+
 def _resolve_target(target_db: str | Path | None) -> Path:
     """The database to read/write in place: an explicit arg, else the configured DB."""
     if target_db is not None:
@@ -382,14 +405,13 @@ def export_project(
             max_before = _max_ids(conn)
 
             conn.execute("BEGIN IMMEDIATE")  # take the write lock up front; busy -> fail fast
+            fk_before = _fk_violations(conn)
             ensure_provenance_table(conn)  # inside txn so a rollback removes it too
             validate(conn, spec)  # pre-write schema/compat gate (mh3.3); clean error before INSERTs
             result = write_project(conn, spec)
             record_rows(conn, operation_id, _collect_prov(conn, result), now.isoformat())
             _assert_additive(conn, counts_before, max_before, result)
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before)
             conn.commit()
             project_guid = _guid(conn, "project", result.project_id)
         except sqlite3.OperationalError as e:
@@ -458,6 +480,7 @@ def create_exposure_template(
             max_before = conn.execute("SELECT COALESCE(MAX(Id), 0) FROM exposuretemplate").fetchone()[0]
 
             conn.execute("BEGIN IMMEDIATE")
+            fk_before = _fk_violations(conn)
             ensure_provenance_table(conn)
             validate(conn, spec)
             template_id = write_exposure_template(conn, spec)
@@ -477,9 +500,7 @@ def create_exposure_template(
                 raise ExportError(
                     f"non-additive id reuse in exposuretemplate: Id {template_id} <= prior max {max_before}"
                 )
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before)
             conn.commit()
         except sqlite3.OperationalError as e:
             conn.rollback()
@@ -605,12 +626,11 @@ def update_project(
                 raise ExportError(f"quick_check failed before write: {chk}")
 
             conn.execute("BEGIN IMMEDIATE")
+            fk_before = _fk_violations(conn)
             _assert_editable(conn, project_id)
             validate(conn, spec)  # schema/profile compatibility (reused create-path gate)
             result = writer_update_project(conn, project_id, spec)
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before)
             conn.commit()
             project_guid = _guid(conn, "project", result.project_id)
         except sqlite3.OperationalError as e:
@@ -679,6 +699,7 @@ def set_exposure_plan_enabled(
                 raise ExportError(f"quick_check failed before write: {chk}")
 
             conn.execute("BEGIN IMMEDIATE")
+            fk_before = _fk_violations(conn)
             row = conn.execute(
                 "SELECT Id FROM exposureplan WHERE Id = ?", (plan_id,)
             ).fetchone()
@@ -688,9 +709,7 @@ def set_exposure_plan_enabled(
                 "UPDATE exposureplan SET enabled = ? WHERE Id = ?",
                 (1 if enabled else 0, plan_id),
             )
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before)
             conn.commit()
         except sqlite3.OperationalError as e:
             conn.rollback()
@@ -747,11 +766,10 @@ def delete_project(
                 raise ExportError(f"quick_check failed before write: {chk}")
 
             conn.execute("BEGIN IMMEDIATE")
+            fk_before = _fk_violations(conn)
             _assert_editable(conn, project_id)
             deleted = writer_delete_project(conn, project_id)
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before)
             conn.commit()
         except sqlite3.OperationalError as e:
             conn.rollback()
@@ -804,6 +822,7 @@ def undo_operation(
         try:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("BEGIN IMMEDIATE")
+            fk_before = _fk_violations(conn)
             rows = rows_for_operation(conn, operation_id)
             if not rows:
                 raise ExportError(f"no provenance rows for {operation_id} in {st.source}")
@@ -814,9 +833,7 @@ def undo_operation(
                     )
             deleted = _delete_provenanced_rows(conn, rows)
             delete_operation_rows(conn, operation_id)
-            fk = conn.execute("PRAGMA foreign_key_check").fetchall()
-            if fk:
-                raise ExportError(f"foreign key violations after undo: {fk[:5]}")
+            _assert_no_new_fk_violations(conn, fk_before, " after undo")
             conn.commit()
         except sqlite3.OperationalError as e:
             conn.rollback()
